@@ -78,42 +78,37 @@ class AuthManager {
     const cleanName = name.trim();
     const cleanEmail = email ? email.trim() : `${cleanName.toLowerCase().replace(/\s+/g, "")}@sangam.app`;
     const initials = computeInitials(cleanName);
-    const userId = "usr-" + cleanName.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10) + "-" + Date.now().toString(36);
+    let userId = "usr-" + cleanName.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10) + "-" + Date.now().toString(36);
+
+    if (isLive()) {
+      const sb = await getSupabase();
+      if (!sb) throw new Error("Unable to connect to Supabase authentication.");
+      const { data, error } = await sb.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: { data: { full_name: cleanName } },
+      });
+      if (error || !data.user) throw new Error(error?.message || "Could not create your secure account.");
+      userId = data.user.id;
+    }
 
     const user = {
       id: userId,
       name: cleanName,
       email: cleanEmail,
       avatar: initials,
-      role: "manager", // Creator of events starts as Event Manager
+      role: "manager",
       department: "Event Organizer",
       assignedGroupId: null
     };
 
-    // Save to local registry
-    this.saveRegisteredUser({
-      ...user,
-      password: password
-    });
-
-    // Try live Supabase sync in background if connected
     if (isLive()) {
-      getSupabase().then((sb) => {
-        if (sb) {
-          sb.from("profiles").upsert({
-            id: user.id,
-            full_name: user.name,
-            email: user.email,
-            avatar_url: user.avatar,
-            role: user.role,
-            department: user.department
-          }).catch((err) => {
-            console.warn("[Sangam Supabase] Profile upsert notice:", err);
-          });
-        }
-      });
+      // Migration 10 creates the profile from the authenticated user record.
+      this.setCustomUser(user);
+      return user;
     }
 
+    this.saveRegisteredUser({ ...user, password });
     this.setCustomUser(user);
     return user;
   }
@@ -127,6 +122,35 @@ class AuthManager {
     }
 
     const q = name.trim().toLowerCase();
+
+    if (isLive()) {
+      const sb = await getSupabase();
+      if (!sb) throw new Error("Unable to connect to Supabase authentication.");
+      let email = q.includes("@") ? q : "";
+      let profileName = name.trim();
+      if (!email) {
+        const { data: profiles } = await sb.from("profiles").select("email, full_name").eq("full_name", name.trim()).limit(1);
+        email = profiles?.[0]?.email || "";
+        profileName = profiles?.[0]?.full_name || profileName;
+      }
+      if (!email) throw new Error("Use the email address for your secure Supabase account.");
+
+      const { data, error } = await sb.auth.signInWithPassword({ email, password });
+      if (error || !data.user) throw new Error(error?.message || "Could not sign in securely.");
+      const { data: profiles } = await sb.from("profiles").select("role").eq("id", data.user.id).limit(1);
+      const isManager = profiles?.[0]?.role === "manager";
+      const user = {
+        id: data.user.id,
+        name: data.user.user_metadata?.full_name || profileName || email,
+        email,
+        avatar: computeInitials(data.user.user_metadata?.full_name || profileName || email),
+        role: isManager ? "manager" : "volunteer",
+        department: isManager ? "Event Organizer" : "Event Member",
+        assignedGroupId: null,
+      };
+      this.setCustomUser(user);
+      return user;
+    }
 
     // 1. Check local registered users
     const registered = this.getRegisteredUsers();
@@ -182,6 +206,9 @@ class AuthManager {
   }
 
   logout() {
+    if (isLive()) {
+      getSupabase().then((sb) => sb?.auth.signOut()).catch(() => {});
+    }
     try {
       localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
     } catch (e) {
@@ -270,7 +297,7 @@ class AuthManager {
   }
 
   canRunAIBriefing() {
-    return true; // All roles can query Gemini assistant within their perspective
+    return this.currentUser.role === "manager";
   }
 
   // Live group assignment for lead/volunteer personas. Reads the roster entry

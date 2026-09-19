@@ -144,12 +144,14 @@
               <input type="text" id="input-event-title" required placeholder="e.g. Kraft Night 2026" value="Kraft Night 2026" autocomplete="off">
             </div>
             <button type="submit" class="btn-dark">Create Event &amp; Become Manager</button>
+            <button type="button" class="btn-light" id="btn-plan-event">Plan with Gemini</button>
           </form>
         </div>
         <div class="card gateway-card">
           <p class="section-label">Find an event</p>
           <h2 class="gateway-card-title">Find an Event</h2>
           <p class="card-sub">Enter the 6-digit access code provided by your event organizer to join the active lobby.</p>
+          <div id="join-event-alert" class="entry-auth-alert" hidden></div>
           <form id="find-event-form" class="stack-form">
             <div class="field">
               <label id="pin-label">6-digit event code</label>
@@ -218,8 +220,10 @@
           <h1 class="workspace-title" id="workspace-page-title">Dashboard</h1>
           <div class="header-meta">
             <span class="mono-muted" id="header-datetime">Sep 19, 2026 · 10:23 AM</span>
+            <button class="btn-light btn-small btn-invite-trigger" id="btn-open-invite" type="button" title="Invite members with PIN or email">
+              <span aria-hidden="true">✉</span> <span>Invite</span>
+            </button>
             <span class="live-badge" id="header-live-badge"><span class="live-dot" aria-hidden="true"></span> Live now</span>
-            <button class="icon-btn only-tablet-down" id="btn-open-ai" type="button" aria-label="Open AI briefing" aria-controls="ai-rail" aria-expanded="false">✦</button>
           </div>
         </header>
 
@@ -263,8 +267,15 @@
 
           <!-- Assign roles -->
           <div class="workspace-page" id="page-assign-roles" role="region" aria-label="Assign roles" hidden>
-            <h2 class="page-title">Assign Roles</h2>
-            <p class="page-sub">Manage coordinator and volunteer assignments for the active event.</p>
+            <div class="page-title-row">
+              <div>
+                <h2 class="page-title">Assign Roles</h2>
+                <p class="page-sub">Manage coordinator and volunteer assignments for the active event.</p>
+              </div>
+              <button class="btn-dark btn-small" id="btn-assign-invite" type="button">
+                <span>✉ Invite Members</span>
+              </button>
+            </div>
             <section class="card narrow" aria-labelledby="assign-form-title">
               <p class="section-label" id="assign-form-title">Add / update member</p>
               <form id="form-assign-inline" class="stack-form">
@@ -386,8 +397,8 @@
 
       <aside class="ai-rail" id="ai-rail" aria-label="AI briefing" role="dialog" aria-modal="false" aria-hidden="true">
         <div class="ai-head">
-          <div class="ai-brand"><span class="ai-mark" aria-hidden="true">✦</span><div><p class="ai-title">AI Briefing</p><p class="ai-online">● Online</p></div></div>
-          <button class="icon-btn only-tablet-down" id="btn-close-ai" type="button" aria-label="Close AI briefing">✕</button>
+          <div class="ai-brand"><span class="ai-mark" aria-hidden="true">✦</span><div><p class="ai-title">AI Briefing</p><p class="ai-online" id="ai-source-status">● Live event data ready</p></div></div>
+          <button class="icon-btn" id="btn-close-ai" type="button" aria-label="Close AI briefing" title="Close AI briefing">✕</button>
         </div>
         <div class="ai-messages" id="gemini-thread" role="log" aria-live="polite" aria-label="AI conversation"></div>
         <div class="ai-chips" aria-label="Quick prompts">
@@ -396,13 +407,25 @@
           <button class="chip" type="button" data-prompt="Who are the event roles and leaders?">Roles</button>
           <button class="chip" type="button" data-prompt="Give me an executive status briefing">Status</button>
         </div>
-        <div class="ai-actions"><button class="btn-light btn-small" id="btn-ai-briefing" type="button">✦ Executive Briefing</button></div>
+        <section class="ai-plan-preview" id="ai-plan-preview" aria-label="Gemini event plan" hidden></section>
+        <div class="ai-actions">
+          <button class="btn-light btn-small" id="btn-ai-briefing" type="button">Live status</button>
+          <button class="btn-light btn-small" id="btn-ai-force" type="button">Use Gemini</button>
+        </div>
         <form id="gemini-input-form" class="ai-form">
           <label class="visually-hidden" for="gemini-prompt-input">Ask the AI coordinator</label>
           <input type="text" id="gemini-prompt-input" placeholder="Ask anything…" autocomplete="off" enterkeyhint="send" maxlength="1000">
           <button type="submit" class="btn-dark btn-small" aria-label="Send AI prompt">↑</button>
         </form>
       </aside>
+
+      <!-- Floating AI Briefing Trigger Button -->
+      <button class="ai-fab" id="btn-ai-fab" type="button" aria-label="Open AI Briefing" aria-controls="ai-rail" aria-expanded="false" title="Open AI Briefing">
+        <span class="ai-fab-glow" aria-hidden="true"></span>
+        <span class="ai-fab-mark" aria-hidden="true">✦</span>
+        <span class="ai-fab-label">AI Briefing</span>
+        <span class="ai-fab-pulse" aria-hidden="true" title="Online"></span>
+      </button>
     </div>
 
     <div class="popover profile-popover" id="profile-popover" role="dialog" aria-modal="false" aria-labelledby="profile-popover-title" hidden>
@@ -537,8 +560,71 @@
         </form>
       </div>
     </div>
+
+    <!-- Invite Members Modal -->
+    <div class="modal-backdrop" id="invite-member-modal" role="dialog" aria-modal="true" aria-labelledby="invite-modal-title" hidden>
+      <div class="modal-card invite-modal-card">
+        <div class="modal-header">
+          <div>
+            <h2 class="modal-title" id="invite-modal-title">Invite Team Members</h2>
+            <p class="modal-sub">Share event access code or send an email invitation</p>
+          </div>
+          <button type="button" class="icon-btn" id="btn-invite-close" aria-label="Close invite modal">✕</button>
+        </div>
+
+        <!-- 1-Click Link & PIN Share Box -->
+        <div class="invite-share-box">
+          <div class="invite-share-meta">
+            <span class="invite-pin-badge">EVENT PIN</span>
+            <strong class="invite-pin-code" id="invite-modal-pin">482910</strong>
+            <span class="invite-share-url-preview" id="invite-url-text">http://localhost:3456/?pin=482910</span>
+          </div>
+          <button type="button" class="btn-dark btn-small" id="btn-copy-invite-link">
+            <span id="copy-invite-link-label">Copy Invite Link &amp; PIN</span>
+          </button>
+        </div>
+
+        <div class="invite-divider">
+          <span>or dispatch via SendGrid</span>
+        </div>
+
+        <!-- SendGrid Email Dispatch Form -->
+        <form id="form-send-invite" class="stack-form">
+          <div id="invite-alert" class="entry-auth-alert" hidden></div>
+          <div class="form-grid-2">
+            <div class="field">
+              <label for="invite-recipient-name">Recipient full name</label>
+              <input type="text" id="invite-recipient-name" placeholder="e.g. Maya Patel" autocomplete="off" required>
+            </div>
+            <div class="field">
+              <label for="invite-recipient-email">Recipient email address</label>
+              <input type="email" id="invite-recipient-email" placeholder="e.g. maya@example.com" autocomplete="off" required>
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="field">
+              <label for="invite-role-select">Role assignment</label>
+              <select id="invite-role-select">
+                <option value="volunteer">Worker / Volunteer</option>
+                <option value="lead">Team Leader (Group Organiser)</option>
+                <option value="overseer">VIP / Overseer (Read-Only Principal)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="invite-group-select">Department / Operational group</label>
+              <select id="invite-group-select"></select>
+            </div>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-light" id="btn-invite-cancel">Cancel</button>
+            <button type="submit" class="btn-dark" id="btn-invite-send">Send Invitation Email</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </section>
 
+  <script src="/api/runtime-config"></script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

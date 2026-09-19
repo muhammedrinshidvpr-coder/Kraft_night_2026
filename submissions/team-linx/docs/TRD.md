@@ -49,7 +49,8 @@ graph TD
 2. **Live Cloud Mode (`USE_LIVE_BACKEND = true`)**:
    - Synchronizes directly with Supabase tables (`events`, `programmes`, `event_members`, `chat_messages`).
    - Uses Supabase Realtime WebSocket channels to broadcast in-app messages and timeline changes instantly across connected browser tabs.
-   - Communicates with Google Gemini API using the secure key defined in `env.js`.
+    - Communicates with Google Gemini only through the Supabase Edge Function,
+      which reads its secure server-side secret.
 
 ---
 

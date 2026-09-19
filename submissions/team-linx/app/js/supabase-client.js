@@ -75,10 +75,9 @@ export async function getSupabase() {
     const isHealthy = await testConnection(_client);
     if (isHealthy) {
       setStatus("live", "Connected to Supabase Realtime");
-      // Auto-seed database if empty
-      autoSeedDatabase(_client).catch((err) => {
-        console.warn("[Sangam Supabase] Auto-seed check error:", err);
-      });
+      // Production setup applies the numbered migrations and seeds a manager
+      // explicitly. The old auto-seeder uses legacy string IDs and must not
+      // mutate a migration-backed database.
     } else {
       setStatus("offline", "Supabase unreachable");
     }

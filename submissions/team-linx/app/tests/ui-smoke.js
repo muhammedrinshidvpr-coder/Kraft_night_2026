@@ -179,7 +179,22 @@ async function run() {
     s = await waitForApp();
     allPass = report("executive briefing appends to AI thread", s.doc.getElementById("gemini-thread").children.length > threadBefore) && allPass;
 
-    // 9. REGRESSION: RBAC enforced per role through the UI (start from manager).
+    // 9. FEATURE VERIFICATION: factual manager prompt stays local and exposes source.
+    const originalFetch = s.win.fetch;
+    let aiFetches = 0;
+    s.win.fetch = () => {
+      aiFetches += 1;
+      throw new Error("Local factual responses must not call a provider.");
+    };
+    await s.app.submitGeminiPrompt("List the operational teams and leaders");
+    await sleep(100);
+    s = await waitForApp();
+    const latestAiText = s.doc.getElementById("gemini-thread").lastElementChild.textContent;
+    const latestSource = s.doc.getElementById("gemini-thread").lastElementChild.querySelector(".ai-source-badge")?.textContent;
+    allPass = report("factual AI prompt uses live event data without a Gemini request", aiFetches === 0 && latestAiText.includes("Operational teams") && latestSource === "Live event data") && allPass;
+    s.win.fetch = originalFetch;
+
+    // 10. REGRESSION: RBAC enforced per role through the UI (start from manager).
     s.doc.querySelector('.role-btn[data-role="manager"]').click();
     await sleep(300);
     s = await waitForApp();
@@ -265,6 +280,173 @@ async function run() {
     const isGatewayAfterLogin = s.app.currentView === "gateway"
       && s.doc.getElementById("gateway-active-user-name").textContent.includes(testUser);
     allPass = report("Login authenticates credentials and opens Event Gateway", isGatewayAfterLogin) && allPass;
+
+    // Enter workspace as Manager Alex Rivera
+    s.app.switchView("dashboard");
+    await sleep(200);
+    s = await waitForApp();
+    const activePin = s.app.state.currentEvent?.sixDigitCode || "482910";
+
+    // 14. FEATURE VERIFICATION: Invite Members Modal (Link generation & SendGrid email dispatch)
+    s.doc.getElementById("btn-open-invite").click();
+    await sleep(200);
+    s = await waitForApp();
+    const inviteModal = s.doc.getElementById("invite-member-modal");
+    const inviteModalOpened = inviteModal && !inviteModal.hidden;
+    const pinMatches = s.doc.getElementById("invite-modal-pin").textContent === activePin;
+    const urlContainsPin = s.doc.getElementById("invite-url-text").textContent.includes(activePin);
+    allPass = report("Invite Members dialog opens with 6-digit PIN and join link", inviteModalOpened && pinMatches && urlContainsPin) && allPass;
+
+    // Dispatch email invitation via form
+    s.doc.getElementById("invite-recipient-name").value = "Maya Patel";
+    s.doc.getElementById("invite-recipient-email").value = "maya.patel@example.com";
+    s.doc.getElementById("invite-role-select").value = "volunteer";
+    s.doc.getElementById("form-send-invite").dispatchEvent(new s.win.Event("submit", { bubbles: true, cancelable: true }));
+    await sleep(300);
+    s = await waitForApp();
+    const inviteAlert = s.doc.getElementById("invite-alert");
+    const inviteAlertOk = inviteAlert && !inviteAlert.hidden && inviteAlert.classList.contains("success");
+    const mayaInRoster = s.app.state.joinedPeople.some((p) => p.name === "Maya Patel");
+    allPass = report("SendGrid invitation dispatches and records invited member", inviteAlertOk && mayaInRoster) && allPass;
+    s.doc.getElementById("btn-invite-close").click();
+    await sleep(100);
+
+    // 15. FEATURE VERIFICATION: Second Person (Sonia Chen) signs up and joins event using 6-Digit PIN
+    s.app.logout();
+    await sleep(200);
+    s = await waitForApp();
+
+    s.doc.getElementById("btn-login-to-signup").click();
+    await sleep(150);
+    s = await waitForApp();
+
+    const attendeeName = "Sonia Chen";
+    s.doc.getElementById("input-signup-name").value = attendeeName;
+    s.doc.getElementById("input-signup-email").value = "sonia.chen@example.com";
+    s.doc.getElementById("input-signup-password").value = "soniapassword";
+    s.doc.getElementById("signup-form").dispatchEvent(new s.win.Event("submit", { bubbles: true, cancelable: true }));
+    await sleep(400);
+    s = await waitForApp();
+
+    // At Gateway, Sonia joins using the active 6-digit PIN
+    const pinDigits = s.doc.querySelectorAll(".pin-digit");
+    activePin.split("").forEach((d, i) => {
+      if (pinDigits[i]) pinDigits[i].value = d;
+    });
+    s.doc.getElementById("find-event-form").dispatchEvent(new s.win.Event("submit", { bubbles: true, cancelable: true }));
+    await sleep(400);
+    s = await waitForApp();
+
+    const soniaInWorkspace = s.app.currentView === "dashboard" && !s.doc.getElementById("view-workspace").hidden;
+    const soniaRecorded = s.app.state.joinedPeople.some((p) => p.name === attendeeName && p.status === "active");
+    allPass = report("Second person (Sonia Chen) joins using PIN and appears in event roster", soniaInWorkspace && soniaRecorded) && allPass;
+
+    // 16. FEATURE VERIFICATION: Manager assigns Sonia Chen as Team Leader in Food Coordination
+    s.app.switchView("assign-roles");
+    await sleep(200);
+    s = await waitForApp();
+
+    // Manager assigns role and group to Sonia
+    const memberSelect = s.doc.getElementById("assign-member-select");
+    const soniaMember = s.app.state.joinedPeople.find((p) => p.name === attendeeName);
+    if (memberSelect && soniaMember) memberSelect.value = soniaMember.id;
+    s.doc.getElementById("assign-role-select-inline").value = "lead";
+    s.doc.getElementById("assign-group-select-inline").value = "grp-food";
+    s.doc.getElementById("form-assign-inline").dispatchEvent(new s.win.Event("submit", { bubbles: true, cancelable: true }));
+    await sleep(300);
+    s = await waitForApp();
+
+    const updatedSonia = s.app.state.joinedPeople.find((p) => p.name === attendeeName);
+    const assignedAsLead = updatedSonia && updatedSonia.role === "lead" && updatedSonia.groupId === "grp-food";
+    allPass = report("Manager assigns joined attendee as Team Leader in Food Coordination", !!assignedAsLead) && allPass;
+
+    // 17. FEATURE VERIFICATION: Team Lead Sonia Chen posts in Food Coordination channel
+    s.app.auth.setCustomUser({
+      id: soniaMember ? soniaMember.id : "usr-sonia",
+      name: attendeeName,
+      role: "lead",
+      assignedGroupId: "grp-food",
+      department: "Food Coordination"
+    });
+    s.app.switchView("groups");
+    await sleep(200);
+    s = await waitForApp();
+
+    // Select Food channel and post message
+    s.app.chatManager.setActiveGroup("grp-food");
+    s.app.renderChatChannels();
+    s.app.renderChatMessages(s.app.chatManager.getMessages());
+    const canPostInFood = !s.doc.getElementById("chat-text-input").disabled;
+
+    const testChatMessage = "Food supplies verified: 250 lunch packets ready for dispatch!";
+    s.doc.getElementById("chat-text-input").value = testChatMessage;
+    s.doc.getElementById("chat-send-form").dispatchEvent(new s.win.Event("submit", { bubbles: true, cancelable: true }));
+    await sleep(300);
+    s = await waitForApp();
+
+    const messageSent = s.doc.getElementById("chat-bubbles-scroll").textContent.includes(testChatMessage);
+    allPass = report("Assigned Team Leader can post live message in Food Coordination channel", canPostInFood && messageSent) && allPass;
+
+    // 18. FEATURE VERIFICATION: Manager reviews full event stats and programme management
+    s.app.auth.setRole("manager");
+    s.app.switchView("dashboard");
+    await sleep(200);
+    s = await waitForApp();
+
+    const totalMembers = Number(s.doc.getElementById("stat-hackers-count").textContent);
+    const hasPrograms = Number(s.doc.getElementById("stat-total-prog").textContent) > 0;
+    allPass = report("Manager dashboard reflects live multi-user roster count and schedule stats", totalMembers >= 2 && hasPrograms) && allPass;
+
+    // 19. FEATURE VERIFICATION: Expandable AI Chat side drawer via bottom-right floating button
+    const aiFab = s.doc.getElementById("btn-ai-fab");
+    const aiRail = s.doc.getElementById("ai-rail");
+    const fabExists = aiFab && aiFab.textContent.includes("AI Briefing") && aiFab.getAttribute("aria-controls") === "ai-rail";
+    const railInitialClosed = aiRail && !aiRail.classList.contains("open") && aiFab.getAttribute("aria-expanded") === "false";
+    allPass = report("Floating AI trigger button is present at bottom-right with drawer collapsed by default", !!(fabExists && railInitialClosed)) && allPass;
+
+    // Click FAB to expand AI drawer
+    aiFab.click();
+    await sleep(250);
+    s = await waitForApp();
+    const railExpanded = aiRail.classList.contains("open") && aiFab.getAttribute("aria-expanded") === "true";
+    allPass = report("Clicking bottom-right button smoothly expands AI drawer", !!railExpanded) && allPass;
+
+    // Close via close button
+    const closeBtn = s.doc.getElementById("btn-close-ai");
+    if (closeBtn) closeBtn.click();
+    await sleep(250);
+    s = await waitForApp();
+    const railClosedByBtn = !aiRail.classList.contains("open") && aiFab.getAttribute("aria-expanded") === "false";
+    allPass = report("Clicking close button collapses AI drawer and resets trigger state", !!railClosedByBtn) && allPass;
+
+    // Expand again and close with Escape key
+    aiFab.click();
+    await sleep(200);
+    s.doc.dispatchEvent(new s.win.KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await sleep(200);
+    s = await waitForApp();
+    // 20. FEATURE VERIFICATION: Mobile navigation drawer stacking & background blur
+    const sidebar = s.doc.getElementById("sidebar");
+    const backdrop = s.doc.getElementById("workspace-backdrop");
+    s.app.openDrawers("nav");
+    await sleep(250);
+    s = await waitForApp();
+
+    const sidebarOpen = sidebar && sidebar.classList.contains("open") && sidebar.getAttribute("aria-hidden") === "false";
+    const backdropShown = backdrop && !backdrop.hidden && backdrop.classList.contains("show");
+
+    const sidebarZ = s.win.parseInt(s.win.getComputedStyle(sidebar).zIndex, 10);
+    const backdropZ = s.win.parseInt(s.win.getComputedStyle(backdrop).zIndex, 10);
+    const correctStacking = sidebarZ > backdropZ;
+
+    allPass = report("Opening mobile sidebar positions drawer above blurred backdrop", !!(sidebarOpen && backdropShown && correctStacking)) && allPass;
+
+    // Close sidebar via backdrop click
+    if (backdrop) backdrop.click();
+    await sleep(300);
+    s = await waitForApp();
+    const sidebarClosed = sidebar && !sidebar.classList.contains("open") && sidebar.getAttribute("aria-hidden") === "true";
+    allPass = report("Clicking blurred backdrop smoothly dismisses sidebar drawer", !!sidebarClosed) && allPass;
 
     report("overall smoke result", allPass);
   } catch (err) {

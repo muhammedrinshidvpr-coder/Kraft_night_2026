@@ -2,10 +2,9 @@
 // SANGAM - Local Environment Config (DO NOT COMMIT)
 // Team LINX - Kraft Night 2026
 // ----------------------------------------------------------------------------
-// 1. Copy this file to `env.js` in the same folder:
-//      copy env.example.js env.js
-// 2. Fill in your real values from Supabase / Gemini / SendGrid
-// 3. `env.js` is git-ignored, so your keys stay local.
+// Legacy browser configuration template. index.html does not load this file.
+// Never add Gemini, service-role, deployment, or email-provider secrets here.
+// Use the browser-local public Supabase setup documented in SETUP.md instead.
 // ============================================================================
 
 window.ENV_SUPABASE_URL = "https://xyzcompany.supabase.co";

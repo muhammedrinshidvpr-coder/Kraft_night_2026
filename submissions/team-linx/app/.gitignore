@@ -2,3 +2,7 @@
 env.js
 
 .vercel
+node_modules
+test-results
+playwright-report
+supabase/.temp

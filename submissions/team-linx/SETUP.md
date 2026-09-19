@@ -23,56 +23,39 @@ Follow these steps once to go live.
 
 ---
 
-## 1. Create Supabase project + run schema
+## 1. Create Supabase project + run the deployed schema
 
 1. Go to https://supabase.com → **New Project** → note DB password.
 2. Wait for provisioning (~2 min).
-3. Open **SQL Editor → New Query** → paste entire contents of
-   `submissions/team-linx/app/supabase/schema.sql` → **Run**.
-4. Verify: **Table Editor** should show `profiles, events, departments,
-   event_members, tasks, chat_messages, ai_briefings`.
-5. Enable Realtime (schema already does `alter publication supabase_realtime add table`
-   for `tasks` and `chat_messages`, but confirm):
-   **Database → Replication → supabase_realtime →** check `tasks`, `chat_messages`.
+3. Open the SQL Editor and run `app/supabase/schema.sql`.
+4. Then run `app/supabase/migrations/09_ai_event_blueprints.sql` and
+   `10_auth_profile_trigger.sql`.
+5. Verify: **Table Editor** shows `profiles, events, event_groups,
+   event_members, programmes, chat_messages, ai_event_blueprints`, and
+   `event_role_slots`.
+6. Enable Realtime for `programmes`, `event_members`, and `chat_messages` if
+   the migration did not already add them to `supabase_realtime`.
 
-### Seed one demo event (run in SQL Editor)
+### Provision the first manager (run after they sign up)
+
+Promote the new authenticated user before asking Gemini to create their first
+event. The profile ID is stored as text in this deployed schema:
 
 ```sql
-insert into public.events (title, tagline, venue, start_date, end_date, status)
-values ('Kraft Night 2026', 'Unified Event Command Center', 'Main Auditorium', now(), now() + interval '1 day', 'live')
-returning id;
--- copy the returned id as EVENT_ID, then:
-insert into public.departments (event_id, name, icon)
-values
- ('<EVENT_ID>', 'Stage & Sound', '🎤'),
- ('<EVENT_ID>', 'Logistics & Transport', '📦'),
- ('<EVENT_ID>', 'Hospitality & VIPs', '☕'),
- ('<EVENT_ID>', 'Tech & Streaming', '💻'),
- ('<EVENT_ID>', 'Media & PR', '📸');
+update public.profiles
+set role = 'manager', department = 'Event Organizer'
+where email = 'manager@example.com';
 ```
 
 ---
 
 ## 2. Connect frontend to Supabase (2-minute version, no rebuild)
 
-Option A — `env.js` file (recommended for local dev):
+`index.html` intentionally does not load `env.js`. Browser configuration must
+contain only public Supabase connection values. Do not add Gemini, service-role,
+deployment, or email-provider secrets to browser configuration.
 
-```powershell
-cd submissions\team-linx\app
-copy env.example.js env.js
-# then edit env.js with your URL + anon key + set true
-```
-
-```js
-window.ENV_SUPABASE_URL = "https://xyzcompany.supabase.co";
-window.ENV_SUPABASE_ANON_KEY = "eyJhbGciOi...your-anon-key";
-window.ENV_USE_LIVE_BACKEND = true;
-```
-
-`index.html` already loads `env.js` before `js/main.js`, and `js/config.js`
-reads it automatically.
-
-Option B — no file, via browser console (good for quick judge demo):
+For a local browser demo, configure the public values through the browser console:
 
 ```js
 localStorage.setItem("sangam_supabase_url", "https://xyz.supabase.co");
@@ -88,9 +71,9 @@ import { enableLiveBackend } from "./js/config.js";
 enableLiveBackend("https://xyz.supabase.co", "eyJhbGciOi...");
 ```
 
-Checklist: reload app → open DevTools console → no 404 for `env.js` (or
-expected info log) → `ai.js`/`email.js` will now `fetch(.../functions/v1/...)`
-instead of mock fallback.
+Checklist: reload app → open DevTools console → live client connects → public
+Supabase calls work. Gemini is never called from the browser; managers call
+the `ai-coordinator` Edge Function with an authenticated Supabase session.
 
 ---
 
@@ -98,10 +81,11 @@ instead of mock fallback.
 
 1. Go to https://aistudio.google.com → **Get API Key** → **Create API key**.
 2. Copy key starting with `AIza...`.
-3. Restrict it (optional but recommended): Google Cloud Console → Credentials → HTTP referrer / API restriction to Generative Language API.
-4. Model used in `supabase/functions/ai-coordinator/index.ts`:
-   `gemini-1.5-flash:generateContent`. No further setup needed — the Edge Function
-   already builds the correct `generateContent` payload.
+3. Restrict it to the Generative Language API. Do not use an HTTP-referrer
+   restriction because the key is used server-to-server by the Edge Function.
+4. The Edge Function reads `GEMINI_MODEL` (default: `gemini-1.5-flash`). Set a
+   supported Flash model explicitly when deploying so model upgrades do not
+   require browser changes.
 
 Test directly (PowerShell):
 
@@ -140,6 +124,7 @@ Set secrets (these live server-side only):
 
 ```powershell
 supabase secrets set GEMINI_API_KEY="AIzaYOURKEY"
+supabase secrets set GEMINI_MODEL="gemini-1.5-flash"
 supabase secrets set SENDGRID_API_KEY="SG.xxxxx"
 supabase secrets set SENDGRID_SENDER_EMAIL="organizer@yourdomain.com"
 supabase secrets list
@@ -152,16 +137,18 @@ supabase functions deploy ai-coordinator
 supabase functions deploy send-email
 ```
 
-Test live endpoints:
+Test the manager-only planning endpoint with a real authenticated manager access
+token, not the public anonymous token:
 
 ```powershell
 $anon="eyJhbGciOi...anon-key"
+$managerAccessToken="eyJhbGciOi...authenticated-manager-session"
 $base="https://xyzcompany.supabase.co/functions/v1"
 
 Invoke-RestMethod -Method Post -ContentType "application/json" `
- -Headers @{apikey=$anon; Authorization="Bearer $anon"} `
- -Uri "$base/ai-coordinator" `
- -Body '{"action":"nl_to_task","prompt":"Arrange 4 cordless mics for Stage 1 by 4 PM"}'
+  -Headers @{apikey=$anon; Authorization="Bearer $managerAccessToken"} `
+  -Uri "$base/ai-coordinator" `
+  -Body '{"action":"plan_event","prompt":"Create a marriage event with appropriate groups and unfilled role slots"}'
 
 Invoke-RestMethod -Method Post -ContentType "application/json" `
  -Headers @{apikey=$anon; Authorization="Bearer $anon"} `
@@ -169,22 +156,33 @@ Invoke-RestMethod -Method Post -ContentType "application/json" `
  -Body '{"toEmail":"test@example.com","recipientName":"Test","type":"invitation","details":{"eventName":"Kraft Night 2026","role":"volunteer","department":"Stage & Sound","inviteUrl":"http://localhost:8000"}}'
 ```
 
-If Gemini returns JSON and SendGrid returns `{success:true}`, flip frontend to
-live (`env.js` → `true`) and reload.
+Apply `supabase/migrations/09_ai_event_blueprints.sql` and
+`10_auth_profile_trigger.sql` after the base `schema.sql`
+before using AI event creation. A Gemini event plan is only available to a
+manager with a real Supabase Auth session. The existing local persona switcher
+is an offline UI demo and cannot authorize a production Gemini request.
+
+When Gemini is configured, factual manager questions such as teams, roles,
+programmes, and schedule remain local and carry a `Live event data` badge.
+Planning requests create a Gemini draft preview and require confirmation before
+the Edge Function creates a separate draft event, groups, and unfilled roles.
 
 ---
 
 ## 6. What YOU still need to do (your action list)
 
-- [ ] Create Supabase project, run `schema.sql`, seed one event + 5 departments
-- [ ] Copy `app/env.example.js` → `app/env.js`, fill URL + anon key
+- [ ] Create Supabase project, run `schema.sql`, then run migrations `09` and `10`
+- [ ] Configure public Supabase URL + anonymous key through browser-local development settings only
 - [ ] Get Gemini key from AI Studio, set as Edge Function secret, deploy `ai-coordinator`
+- [ ] Set `GEMINI_MODEL`, run migration `09_ai_event_blueprints.sql`, and sign in through Supabase Auth as an event manager
+- [ ] Revoke and rotate any deployment, service-role, or provider credential ever placed in a browser-local file
 - [ ] Get SendGrid key + verify sender email, set secrets, deploy `send-email`
 - [ ] Set `window.ENV_USE_LIVE_BACKEND = true` (or localStorage flag) and reload
 - [ ] (Next dev step) Replace `localStorage` task/chat stores in `js/tasks.js` /
         `js/chat.js` with real Supabase queries + Realtime subscriptions via
         `js/supabase-client.js` (`getSupabase()` helper already added).
-        `js/ai.js` and `js/email.js` already call the Edge Functions when live.
+        `js/ai.js` calls the authenticated AI Edge Function for Gemini only;
+        factual AI responses remain local.
 - [ ] Add RLS `insert/update/delete` policies for judges' anon role if writes fail
         (current schema allows public read + open task/chat insert/update — tighten
         before production).

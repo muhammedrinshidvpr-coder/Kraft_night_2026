@@ -1,0 +1,10 @@
+{
+  "name": "sangam-app",
+  "private": true,
+  "scripts": {
+    "test:e2e": "playwright test tests/ai-routing.spec.js --reporter=line"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.58.2"
+  }
+}

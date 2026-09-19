@@ -1,29 +1,25 @@
 # Supabase Migrations — Team Linx (Sangam)
 
-Manual-apply setup. One file per table. No CLI, no build step.
+The deployed project uses the text-ID base schema in `../schema.sql`.
 
-## Run order (Supabase Dashboard → SQL Editor → New Query)
+## AI migration order (Supabase Dashboard → SQL Editor → New Query)
 
-Run each file in order, one paste per file:
+1. Run `../schema.sql` once for the base application tables.
+2. `09_ai_event_blueprints.sql` — AI plan drafts, unfilled role slots, and atomic apply RPC.
+3. `10_auth_profile_trigger.sql` — creates a profile for every Supabase Auth user.
 
-1. `00_init.sql` — extensions + `event_role_type` enum
-2. `01_profiles.sql` — `public.profiles`
-3. `02_events.sql` — `public.events`
-4. `03_event_groups.sql` — `public.event_groups`
-5. `04_event_members.sql` — `public.event_members`
-6. `05_programmes.sql` — `public.programmes`
-7. `06_chat_messages.sql` — `public.chat_messages`
-8. `07_ai_chat_sessions.sql` — `public.ai_chat_sessions`
-9. `08_realtime.sql` — Realtime publication adds
-
-Verify in **Table Editor**: `profiles, events, event_groups, event_members, programmes, chat_messages, ai_chat_sessions`.
+Verify in **Table Editor**: `profiles, events, event_groups, event_members, programmes, chat_messages, ai_chat_sessions, ai_event_blueprints, event_role_slots`.
 Verify in **Database → Replication → supabase_realtime**: `chat_messages, programmes, event_members` checked.
 
-## Legacy file
+## Alternate schema files
 
-- `../schema.sql` is the old single-file snapshot. Kept for reference.
-- **Source of truth going forward is `migrations/`** — one file per table.
-- If you change `migrations/`, optionally regenerate `../schema.sql` by concatenating 00→08 in order, or leave it frozen and note the divergence here.
+- `00_init.sql` through `08_realtime.sql` define an alternate UUID schema and
+  are not compatible with the deployed text-ID project.
+- Do not run those files alongside `../schema.sql`.
+
+## AI coordinator secrets
+
+Configure `GEMINI_API_KEY` as a Supabase Edge Function secret before deploying `ai-coordinator`. Do not add it to `env.js`, `env.example.js`, browser configuration, or source control. The function also uses Supabase's server-provided `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `SUPABASE_SERVICE_ROLE_KEY` to validate the caller and persist drafts.
 
 ## UI → SQL rule (enforced by agent.md)
 
