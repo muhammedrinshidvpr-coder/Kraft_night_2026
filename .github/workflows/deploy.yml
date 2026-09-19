@@ -1,0 +1,55 @@
+name: Deploy Sangam Command Center to Vercel
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "submissions/team-linx/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: Deploy to Vercel Production
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js Environment
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Inject Production Supabase Credentials
+        run: |
+          cat << 'EOF' > submissions/team-linx/app/env.js
+          window.ENV_SUPABASE_URL = "${{ secrets.SUPABASE_URL || 'https://jjbjwpogfpqishghayje.supabase.co' }}";
+          window.ENV_SUPABASE_ANON_KEY = "${{ secrets.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpqYmp3cG9nZnBxaXNoZ2hheWplIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODk4MTM5MzQsImV4cCI6MjEwNTM4OTkzNH0.8YuHgf5GfJjfQuVPS11nd5rZq7ek7Zu7pgLKOHRiq18' }}";
+          window.ENV_USE_LIVE_BACKEND = true;
+          EOF
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel Project Settings
+        working-directory: submissions/team-linx/app
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Build Project Artifacts
+        working-directory: submissions/team-linx/app
+        run: vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+      - name: Deploy Prebuilt to Production
+        working-directory: submissions/team-linx/app
+        run: vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        env:
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
