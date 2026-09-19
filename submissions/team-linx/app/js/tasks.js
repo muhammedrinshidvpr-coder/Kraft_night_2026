@@ -238,6 +238,53 @@ class TaskManager {
     return newProg;
   }
 
+  updateProgramme(progId, updates = {}) {
+    if (!auth.canEditProgramme()) {
+      alert("Permission Denied: Only the Event Manager can edit scheduled programmes.");
+      return null;
+    }
+
+    const prog = this.programmes.find((p) => p.id === progId);
+    if (!prog) return null;
+
+    if (updates.title !== undefined) prog.title = updates.title.trim() || prog.title;
+    if (updates.venue !== undefined) prog.venue = updates.venue.trim();
+    if (updates.startTime !== undefined) prog.startTime = updates.startTime.trim() || prog.startTime;
+    if (updates.endTime !== undefined) prog.endTime = updates.endTime.trim() || prog.endTime;
+    if (updates.description !== undefined) prog.description = updates.description.trim();
+    if (updates.status !== undefined) prog.status = updates.status.trim() || prog.status;
+    if (updates.leadGroup !== undefined) prog.leadGroup = updates.leadGroup.trim() || prog.leadGroup;
+
+    // Sort chronologically by startTime
+    this.programmes.sort((a, b) => (a.startTime > b.startTime ? 1 : -1));
+    this.syncStatusesWithRealTime();
+    this.saveAndNotify("Programme Updated: " + prog.title);
+
+    // Broadcast update to Supabase
+    if (isLive()) {
+      getSupabase().then((sb) => {
+        if (sb) {
+          sb.from("programmes")
+            .update({
+              title: prog.title,
+              description: prog.description,
+              start_time: prog.startTime,
+              end_time: prog.endTime,
+              venue: prog.venue,
+              status: prog.status,
+              lead_group: prog.leadGroup
+            })
+            .eq("id", progId)
+            .then(({ error }) => {
+              if (error) console.warn("[Sangam Tasks] Supabase update error:", error);
+            });
+        }
+      });
+    }
+
+    return prog;
+  }
+
   cycleProgrammeStatus(progId) {
     if (!auth.canEditProgramme()) {
       alert("Permission Denied: Overseer (VIP), Leaders and Volunteers cannot alter the schedule timeline.");

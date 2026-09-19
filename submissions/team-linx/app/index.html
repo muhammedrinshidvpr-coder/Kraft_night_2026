@@ -327,6 +327,54 @@
         <button class="btn-light btn-small" id="btn-side-back-gateway" type="button">← Change / Find Event</button>
       </div>
     </div>
+
+    <!-- Edit Program Modal -->
+    <div class="modal-backdrop" id="edit-program-modal" role="dialog" aria-modal="true" aria-labelledby="edit-program-modal-title" hidden>
+      <div class="modal-card">
+        <div class="modal-header">
+          <h2 class="modal-title" id="edit-program-modal-title">Edit Program</h2>
+          <button type="button" class="icon-btn" id="btn-edit-program-close" aria-label="Close edit program modal">✕</button>
+        </div>
+        <form id="form-edit-program" class="stack-form">
+          <input type="hidden" id="edit-prog-id">
+          <div class="form-grid-2">
+            <div class="field">
+              <label for="edit-prog-title">Program name</label>
+              <input type="text" id="edit-prog-title" required placeholder="e.g. Opening Keynote" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="edit-prog-venue">Location</label>
+              <input type="text" id="edit-prog-venue" placeholder="e.g. Main Hall" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="edit-prog-start">Start time</label>
+              <input type="text" id="edit-prog-start" placeholder="e.g. 09:00 AM" autocomplete="off">
+            </div>
+            <div class="field">
+              <label for="edit-prog-end">End time</label>
+              <input type="text" id="edit-prog-end" placeholder="e.g. 10:00 AM" autocomplete="off">
+            </div>
+          </div>
+          <div class="field">
+            <label for="edit-prog-desc">Description</label>
+            <textarea id="edit-prog-desc" rows="2" placeholder="Brief outline of the programme"></textarea>
+          </div>
+          <div class="field">
+            <label for="edit-prog-status">Status</label>
+            <select id="edit-prog-status">
+              <option value="scheduled">Scheduled</option>
+              <option value="in_progress">In Progress (Live)</option>
+              <option value="delayed">Delayed</option>
+              <option value="completed">Completed (Done)</option>
+            </select>
+          </div>
+          <div class="modal-actions">
+            <button type="button" class="btn-light" id="btn-edit-program-cancel">Cancel</button>
+            <button type="submit" class="btn-dark" id="btn-edit-program-save">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </section>
 
   <script type="module" src="js/main.js"></script>

@@ -62,6 +62,10 @@ class AppController {
     this.currentView = normalizeView(this.state.activeView || "landing");
     this.selectedProgramId = null;
     this.aiSeeded = false;
+    this.lastLiveProgramId = null;
+    this.hasScrolledInitialTimeline = false;
+    this.userIsScrollingTimeline = false;
+    this.timelineScrollTimeout = null;
   }
 
   init() {
@@ -72,6 +76,7 @@ class AppController {
     this.bindChatSystem();
     this.bindGeminiAssistant();
     this.bindSessionPopover();
+    this.bindTimelineAutoScroll();
     taskManager.onProgrammesChange(() => {
       this.renderDashboard();
       this.renderProgramsPage();
@@ -82,6 +87,12 @@ class AppController {
     this.switchView(this.currentView, { skipSave: true });
     this.updateEventDisplay();
     this.updateStats();
+
+    // Live real-time tick: updates navbar clock and auto-refreshes schedule status on minute turnover
+    setInterval(() => {
+      this.updateHeaderDate();
+      taskManager.syncStatusesWithRealTime();
+    }, 1000);
   }
 
   // ------------------------------------------------------------------ routing
@@ -143,6 +154,9 @@ class AppController {
     if (titleEl && PAGE_TITLES[next]) titleEl.textContent = PAGE_TITLES[next];
 
     if (inWorkspace) this.renderWorkspacePage(next);
+    if (next === "dashboard") {
+      requestAnimationFrame(() => this.scrollToLiveEvent(false, true));
+    }
     this.closeDrawers();
     const scroller = document.getElementById("workspace-content");
     if (scroller) scroller.scrollTo({ top: 0 });
@@ -378,7 +392,10 @@ class AppController {
       const now = new Date();
       const date = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
       const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-      el.textContent = `${date} · ${time}`;
+      const text = `${date} · ${time}`;
+      if (el.textContent !== text) {
+        el.textContent = text;
+      }
     } catch {
       el.textContent = "Sep 19, 2026 · 10:23 AM";
     }
@@ -608,8 +625,8 @@ class AppController {
   renderDashboard() {
     const list = document.getElementById("timeline-list");
     const programmes = taskManager.getProgrammes();
-    if (!programmes.find((p) => p.id === this.selectedProgramId)) {
-      const live = programmes.find((p) => p.status === "in_progress");
+    const live = programmes.find((p) => p.status === "in_progress");
+    if (!this.selectedProgramId || (live && !programmes.find((p) => p.id === this.selectedProgramId))) {
       this.selectedProgramId = (live || programmes[0] || {}).id || null;
     }
     if (list) {
@@ -622,23 +639,25 @@ class AppController {
       }
       programmes.forEach((prog, index) => {
         const pill = statusPill(prog.status);
+        const isLive = prog.status === "in_progress";
         const isActive = prog.id === this.selectedProgramId;
         const row = document.createElement("div");
-        row.className = `timeline-row${isActive ? " active" : ""}${prog.status === "completed" ? " dim" : ""}`;
+        row.className = `timeline-row${isActive ? " active" : ""}${isLive ? " is-live" : ""}${prog.status === "completed" ? " dim" : ""}`;
         row.setAttribute("role", "listitem");
         row.setAttribute("tabindex", "0");
         row.setAttribute("aria-label", `${prog.title} — ${pill.label}. Activate to view assignments.`);
         if (isActive) row.setAttribute("aria-current", "true");
-        const dotColor = prog.status === "in_progress" ? "#ef4444" : prog.status === "completed" ? "#d1d5db" : prog.status === "delayed" ? "#f59e0b" : "#8b5cf6";
+        if (isLive) row.setAttribute("data-live", "true");
+        const dotColor = isLive ? "#ef4444" : prog.status === "completed" ? "#d1d5db" : prog.status === "delayed" ? "#f59e0b" : "#8b5cf6";
         const people = (prog.leadGroup ? this.state.joinedPeople.filter((m) => m.groupName === prog.leadGroup).slice(0, 4) : []).map((m) => `
           <span class="mini-person"><span class="avatar" style="color:${esc(colorFor(m.name))}">${esc(initialsFor(m.name))}</span><span>${esc(m.name)}</span><span class="role">${esc(m.roleBadge || m.role)}</span></span>
         `).join("");
         row.innerHTML = `
           <div class="timeline-rail" aria-hidden="true">
-            <span class="timeline-dot" style="background:${dotColor};${prog.status === "in_progress" ? "box-shadow:0 0 0 4px #fee2e2;" : ""}"></span>
+            <span class="timeline-dot" style="background:${dotColor};${isLive ? "box-shadow:0 0 0 4px #fee2e2;" : ""}"></span>
             ${index < programmes.length - 1 ? '<span class="timeline-line"></span>' : ""}
           </div>
-          <div class="timeline-body">
+          <div class="timeline-body${isLive ? " live-event" : ""}">
             <div class="timeline-top">
               <span class="timeline-name">${esc(prog.title)}</span>
               ${auth.canEditProgramme()
@@ -675,6 +694,56 @@ class AppController {
     }
     this.renderAssignedPanel();
     this.updateLiveBadges();
+
+    // Auto-scroll timeline to live event
+    const currentLiveId = (programmes.find((p) => p.status === "in_progress") || {}).id || null;
+    const shouldScroll = this.lastLiveProgramId !== currentLiveId || !this.hasScrolledInitialTimeline;
+    if (shouldScroll && currentLiveId) {
+      this.lastLiveProgramId = currentLiveId;
+      this.hasScrolledInitialTimeline = true;
+      requestAnimationFrame(() => {
+        this.scrollToLiveEvent(true);
+      });
+    }
+  }
+
+  bindTimelineAutoScroll() {
+    const list = document.getElementById("timeline-list");
+    if (!list) return;
+
+    this.userIsScrollingTimeline = false;
+    this.timelineScrollTimeout = null;
+
+    const onUserScroll = () => {
+      this.userIsScrollingTimeline = true;
+      if (this.timelineScrollTimeout) clearTimeout(this.timelineScrollTimeout);
+      this.timelineScrollTimeout = setTimeout(() => {
+        this.userIsScrollingTimeline = false;
+      }, 5000);
+    };
+
+    list.addEventListener("wheel", onUserScroll, { passive: true });
+    list.addEventListener("touchmove", onUserScroll, { passive: true });
+    list.addEventListener("pointerdown", onUserScroll, { passive: true });
+  }
+
+  scrollToLiveEvent(smooth = true, force = false) {
+    const list = document.getElementById("timeline-list");
+    if (!list) return;
+    if (this.userIsScrollingTimeline && !force) return;
+
+    const targetRow = list.querySelector(".timeline-row.is-live") || list.querySelector(".timeline-row.active");
+    if (!targetRow) return;
+
+    const listRect = list.getBoundingClientRect();
+    const targetRect = targetRow.getBoundingClientRect();
+    const currentScrollTop = list.scrollTop;
+    const targetScrollTop = currentScrollTop + (targetRect.top - listRect.top) - (list.clientHeight / 2) + (targetRow.clientHeight / 2);
+
+    list.scrollTo({
+      top: Math.max(0, targetScrollTop),
+      behavior: smooth ? "smooth" : "auto"
+    });
   }
 
   renderAssignedPanel() {
