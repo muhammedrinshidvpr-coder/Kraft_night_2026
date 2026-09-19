@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sangam (സംഗമം) — Event Command Center | Team LINX</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Top Navigation Bar -->
+  <header class="navbar">
+    <div class="brand-section">
+      <div class="brand-logo">സ</div>
+      <div class="brand-text">
+        <h1>SANGAM <span class="team-badge">Team LINX</span></h1>
+        <div class="sub">Kraft Night 2026 • Unified Event Command Center</div>
+      </div>
+    </div>
+
+    <!-- Evaluator Role Switcher Presets -->
+    <div class="role-picker">
+      <button class="role-btn active" data-role="admin">Admin / Organizer</button>
+      <button class="role-btn" data-role="lead">Department Lead</button>
+      <button class="role-btn" data-role="volunteer">Volunteer</button>
+    </div>
+
+    <div class="nav-actions">
+      <button class="btn-action" id="btn-invite-member">
+        <span>✉️</span> Invite Member (SendGrid)
+      </button>
+      <button class="btn-action btn-primary" id="btn-ai-briefing">
+        <span>✨</span> AI Briefing (Gemini)
+      </button>
+
+      <!-- Active User Display -->
+      <div style="display: flex; align-items: center; gap: 10px; margin-left: 10px;">
+        <img id="user-avatar" src="https://api.dicebear.com/7.x/bottts/svg?seed=Aravind" width="34" height="34" style="border-radius: 50%; border: 1px solid var(--border-focus);" alt="Avatar">
+        <div style="font-size: 12px; line-height: 1.2;">
+          <div id="user-name-display" style="font-weight: 700;">Aravind Menon</div>
+          <div id="user-role-badge" style="color: var(--accent-cyan); font-size: 10px; font-weight: 600;">ADMIN</div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- App Main Body -->
+  <div class="app-container">
+
+    <!-- Left Sidebar: Departments -->
+    <aside class="sidebar">
+      <div class="sidebar-title">Departments</div>
+      <ul class="dept-list" id="dept-list">
+        <!-- Injected dynamically via main.js -->
+      </ul>
+
+      <div style="margin-top: auto; padding: 14px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: 11px; color: var(--text-dim); line-height: 1.5;">
+        <strong style="color: var(--text-main);">Wireframe Template Ready</strong><br>
+        Built with pure HTML5, CSS3, Vanilla JS, Supabase, Google AI SDK & SendGrid.
+      </div>
+    </aside>
+
+    <!-- Main Command Center Canvas -->
+    <main class="canvas">
+
+      <!-- Event Stat Metrics -->
+      <div class="stats-grid">
+        <div class="stat-card">
+          <div class="label">Total Tasks</div>
+          <div class="value" id="stat-total">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">In Progress</div>
+          <div class="value" style="color: var(--accent-cyan);" id="stat-in-progress">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Critical Delay Alerts</div>
+          <div class="value" style="color: var(--accent-rose);" id="stat-critical">0</div>
+        </div>
+        <div class="stat-card">
+          <div class="label">Event Progress Rate</div>
+          <div class="value" style="color: var(--accent-emerald);" id="stat-rate">0%</div>
+        </div>
+      </div>
+
+      <!-- Sangam AI Natural-Language-to-Task Input Bar -->
+      <div class="ai-bar-card">
+        <div class="ai-icon-badge">✨</div>
+        <input 
+          type="text" 
+          id="ai-prompt-input" 
+          class="ai-input" 
+          placeholder="Sangam AI: Type instructions (e.g. 'Arrange 4 cordless mics and sound check for Stage 1 by 4 PM')..."
+        >
+        <button class="btn-action btn-primary" id="ai-prompt-btn">✨ Convert to Task</button>
+      </div>
+
+      <!-- Active Board Header -->
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h2 id="active-dept-title" style="font-size: 16px; font-weight: 700; color: #a5b4fc;">Global Event Board</h2>
+        <span style="font-size: 12px; color: var(--text-dim);">Click any card to cycle status: To Do → In Progress → Review → Completed</span>
+      </div>
+
+      <!-- Real-Time Kanban Board -->
+      <div class="kanban-board">
+        <div class="kanban-col">
+          <div class="col-header">
+            <h3>To Do</h3>
+          </div>
+          <div class="task-list" id="col-todo"></div>
+        </div>
+
+        <div class="kanban-col">
+          <div class="col-header">
+            <h3>In Progress</h3>
+          </div>
+          <div class="task-list" id="col-in_progress"></div>
+        </div>
+
+        <div class="kanban-col">
+          <div class="col-header">
+            <h3>Under Review</h3>
+          </div>
+          <div class="task-list" id="col-review"></div>
+        </div>
+
+        <div class="kanban-col">
+          <div class="col-header">
+            <h3>Completed</h3>
+          </div>
+          <div class="task-list" id="col-completed"></div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Right Panel: Live Department Chat -->
+    <section class="right-panel">
+      <div class="panel-tabs">
+        <button class="panel-tab active">Department Chat</button>
+      </div>
+
+      <div class="chat-container">
+        <div class="chat-messages" id="chat-messages">
+          <!-- Injected dynamically via chat.js -->
+        </div>
+
+        <div class="chat-input-box">
+          <input type="text" id="chat-input" placeholder="Type message to department...">
+          <button class="btn-action btn-primary" id="chat-send-btn">Send</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <!-- SendGrid Invitation Modal -->
+  <div class="modal-backdrop" id="invite-modal">
+    <div class="modal-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h3 style="font-size: 16px; font-weight: 700;">Invite Team Member (SendGrid)</h3>
+        <button id="invite-close" style="background: transparent; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer;">✕</button>
+      </div>
+      <form id="invite-form" style="display: flex; flex-direction: column; gap: 14px;">
+        <div>
+          <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">Full Name</label>
+          <input type="text" id="invite-name" required placeholder="e.g. Arjun Dev" style="width: 100%; padding: 10px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: white;">
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">Email Address</label>
+          <input type="email" id="invite-email" required placeholder="name@domain.com" style="width: 100%; padding: 10px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: white;">
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">Department</label>
+          <select id="invite-dept" style="width: 100%; padding: 10px; background: #0f172a; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: white;">
+            <option value="Stage & Sound">Stage & Sound</option>
+            <option value="Logistics & Transport">Logistics & Transport</option>
+            <option value="Hospitality & VIPs">Hospitality & VIPs</option>
+            <option value="Tech & Streaming">Tech & Streaming</option>
+            <option value="Media & PR">Media & PR</option>
+          </select>
+        </div>
+        <div>
+          <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">Role</label>
+          <select id="invite-role" style="width: 100%; padding: 10px; background: #0f172a; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: white;">
+            <option value="volunteer">Volunteer</option>
+            <option value="lead">Department Team Lead</option>
+            <option value="admin">Administrator</option>
+          </select>
+        </div>
+        <button type="submit" class="btn-action btn-primary" style="justify-content: center; margin-top: 10px;">Dispatch SendGrid Email Invitation</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Google Gemini AI Executive Briefing Modal -->
+  <div class="modal-backdrop" id="briefing-modal">
+    <div class="modal-card" style="width: 600px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+        <h3 style="font-size: 16px; font-weight: 700;">✨ Sangam AI Executive Briefing</h3>
+        <button id="briefing-close" style="background: transparent; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer;">✕</button>
+      </div>
+      <div id="briefing-content">
+        <!-- Populated dynamically via ai.js -->
+      </div>
+    </div>
+  </div>
+
+  <!-- App Script (ES6 Module) -->
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
