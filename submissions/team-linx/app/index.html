@@ -3,50 +3,67 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
-  <meta name="theme-color" content="#fafaf9">
-  <title>Sangam — Event Command Center | Team LINX</title>
+  <meta name="theme-color" content="#ffffff">
+  <title>Sangam — Events made Seamless | Team LINX</title>
   <meta name="description" content="Sangam event command center: schedule programmes, assign roles, coordinate groups, chat and brief with AI.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23db2777'/%3E%3Ctext x='32' y='44' font-family='sans-serif' font-size='36' font-weight='bold' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&family=DM+Serif+Display:ital@0;1&family=Outfit:wght@300;400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
   <a class="skip-link" href="#workspace-content">Skip to workspace content</a>
 
-  <!-- Entry view: landing -->
-  <section class="view-container" id="view-landing" aria-labelledby="landing-title">
-    <div class="entry-wrap">
-      <div class="entry-card landing-hero-card">
-        <p class="eyebrow" id="landing-event-eyebrow">Kraft Night 2026 • Real-Time Command System</p>
-        <h1 class="entry-title" id="landing-title">Unified Event Command &amp; Coordination</h1>
-        <p class="entry-sub">Schedule programs, orchestrate departmental teams, and collaborate in real time with the embedded AI coordinator.</p>
-        <div class="entry-actions">
-          <button class="btn-primary-lg" id="hero-get-started-btn" type="button">Get Started</button>
-          <button class="btn-secondary-lg" id="hero-demo-login-btn" type="button">Direct Demo Login</button>
-        </div>
-        <div class="entry-grid">
-          <div class="mini-card"><strong>6-Digit PIN Join</strong><span>Volunteers and VIPs enter instantly with zero friction.</span></div>
-          <div class="mini-card"><strong>Strict RBAC Roles</strong><span>Manager control, read-only overseer, scoped leads and volunteers.</span></div>
-          <div class="mini-card"><strong>In-App Team Messaging</strong><span>Dedicated channels for every operational group.</span></div>
-          <div class="mini-card"><strong>AI Intelligence</strong><span>Schedule briefings, clash checks and announcements.</span></div>
-        </div>
+  <!-- Entry view: landing (Update Event Page Design, vanilla port) -->
+  <section class="view-container entry-new" id="view-landing" aria-labelledby="landing-title">
+    <div class="entry-aurora" aria-hidden="true">
+      <span class="blob b1"></span>
+      <span class="blob b2"></span>
+      <span class="blob b3"></span>
+      <span class="blob b4"></span>
+      <span class="blob b5"></span>
+    </div>
+    <nav class="entry-nav" id="entry-nav" aria-label="Entry navigation">
+      <span class="entry-brand">Sangam</span>
+      <div class="entry-nav-actions">
+        <button class="entry-btn ghost" id="nav-login-btn" type="button">Login</button>
+        <button class="entry-btn filled" id="nav-signup-btn" type="button">Sign Up</button>
       </div>
+    </nav>
+    <div class="entry-hero">
+      <h1 class="entry-display" id="landing-title">Events made
+        <span class="gradient-text entry-rotator" id="rotating-word" aria-live="polite">Seamless.</span>
+      </h1>
+      <p class="entry-sub">The modern platform for hosting events people love — from intimate gatherings to large-scale conferences.</p>
+      <button class="entry-cta" id="hero-get-started-btn" type="button">Get started</button>
     </div>
   </section>
 
-  <!-- Entry view: event gateway -->
-  <section class="view-container" id="view-gateway" aria-labelledby="gateway-title" hidden>
-    <div class="entry-wrap">
+  <!-- Entry view: event gateway (reskinned to match new entry) -->
+  <section class="view-container entry-new" id="view-gateway" aria-labelledby="gateway-title" hidden>
+    <div class="entry-aurora" aria-hidden="true">
+      <span class="blob b1"></span>
+      <span class="blob b2"></span>
+      <span class="blob b3"></span>
+      <span class="blob b4"></span>
+      <span class="blob b5"></span>
+    </div>
+    <nav class="entry-nav" aria-label="Gateway navigation">
+      <span class="entry-brand">Sangam</span>
+      <div class="entry-nav-actions">
+        <button class="entry-btn ghost gateway-back-btn" type="button" data-goto="landing">← Back</button>
+      </div>
+    </nav>
+    <div class="entry-wrap gateway-wrap">
       <div class="gateway-head">
-        <h1 class="page-title" id="gateway-title">Event Collaboration Gateway</h1>
-        <p class="page-sub">Choose an action to proceed into the command workspace.</p>
+        <h1 class="entry-display gateway-title" id="gateway-title">Event Collaboration Gateway</h1>
+        <p class="entry-sub">Choose an action to proceed into the command workspace.</p>
       </div>
       <div class="gateway-grid">
-        <div class="card">
+        <div class="card gateway-card">
           <p class="section-label">Create an event</p>
-          <h2 class="card-title">Create an Event</h2>
+          <h2 class="gateway-card-title">Create an Event</h2>
           <p class="card-sub">Assign an event title. You become the <strong>Event Manager</strong> with control over programs, roles and teams.</p>
           <form id="create-event-form" class="stack-form">
             <div class="field">
@@ -56,9 +73,9 @@
             <button type="submit" class="btn-dark">Create Event &amp; Become Manager</button>
           </form>
         </div>
-        <div class="card">
+        <div class="card gateway-card">
           <p class="section-label">Find an event</p>
-          <h2 class="card-title">Find an Event</h2>
+          <h2 class="gateway-card-title">Find an Event</h2>
           <p class="card-sub">Enter the 6-digit access code provided by your event organizer to join the active lobby.</p>
           <form id="find-event-form" class="stack-form">
             <div class="field">

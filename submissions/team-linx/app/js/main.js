@@ -71,6 +71,7 @@ class AppController {
   init() {
     auth.onUserChange((user) => this.handleUserRoleChanged(user));
     this.bindViewNavigation();
+    this.bindEntryEffects();
     this.bindGatewayForms();
     this.bindWorkspaceForms();
     this.bindChatSystem();
@@ -184,7 +185,17 @@ class AppController {
       if (el) el.addEventListener("click", fn);
     };
     go("hero-get-started-btn", () => this.switchView("gateway"));
-    go("hero-demo-login-btn", () => this.switchView("dashboard"));
+    go("nav-signup-btn", () => this.switchView("gateway"));
+    go("nav-login-btn", () => {
+      this.switchView("gateway");
+      requestAnimationFrame(() => {
+        const firstPin = document.querySelector("#pin-input-group .pin-digit");
+        if (firstPin) firstPin.focus({ preventScroll: true });
+      });
+    });
+    document.querySelectorAll('[data-goto="landing"]').forEach((btn) => {
+      btn.addEventListener("click", () => this.switchView("landing"));
+    });
     go("btn-side-back-gateway", () => {
       this.closePopover();
       this.switchView("gateway");
@@ -228,6 +239,37 @@ class AppController {
         this.closeEditProgramModal();
       }
     });
+  }
+
+  bindEntryEffects() {
+    if (this.entryEffectsBound) return;
+    this.entryEffectsBound = true;
+    const WORDS = ["Seamless.", "Vibrant.", "Memorable.", "Together."];
+    let wordIdx = 0;
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+    const onScroll = () => {
+      const scrolled = window.scrollY > 10;
+      document.querySelectorAll(".entry-new .entry-nav").forEach((nav) => {
+        nav.classList.toggle("scrolled", scrolled);
+      });
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+
+    if (reduceMotion) return;
+    setInterval(() => {
+      if (document.hidden) return;
+      if (!["landing", "gateway"].includes(this.currentView)) return;
+      const el = document.getElementById("rotating-word");
+      if (!el) return;
+      el.classList.add("is-fading");
+      setTimeout(() => {
+        wordIdx = (wordIdx + 1) % WORDS.length;
+        el.textContent = WORDS[wordIdx];
+        el.classList.remove("is-fading");
+      }, 400);
+    }, 2400);
   }
 
   openDrawers(which) {
