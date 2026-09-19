@@ -7,11 +7,38 @@ import { DEFAULT_PROGRAMMES, STORAGE_KEYS } from "./config.js";
 import { auth } from "./auth.js";
 import { getSupabase, isLive } from "./supabase-client.js";
 
+/**
+ * Parses a time string (24h "19:30" or 12h "07:30 PM") into minutes from midnight.
+ */
+export function parseTimeToMinutes(timeStr) {
+  if (!timeStr || typeof timeStr !== "string") return null;
+  const str = timeStr.trim();
+  const match = str.match(/(\d{1,2}):(\d{2})(?::\d{2})?\s*(AM|PM)?/i);
+  if (!match) return null;
+  let hours = parseInt(match[1], 10);
+  const minutes = parseInt(match[2], 10);
+  const modifier = match[3] ? match[3].toUpperCase() : null;
+
+  if (modifier === "PM" && hours < 12) hours += 12;
+  if (modifier === "AM" && hours === 12) hours = 0;
+  return hours * 60 + minutes;
+}
+
 class TaskManager {
   constructor() {
     this.programmes = this.loadProgrammes();
     this.listeners = [];
     this.realtimeChannel = null;
+
+    // Run initial real-time sync against current clock
+    this.syncStatusesWithRealTime();
+
+    // Re-evaluate statuses every 30 seconds as real time moves forward
+    if (typeof window !== "undefined") {
+      setInterval(() => {
+        this.syncStatusesWithRealTime();
+      }, 30000);
+    }
 
     // Initialize Supabase Realtime if live backend is enabled
     this.initLiveBackend();
@@ -50,6 +77,7 @@ class TaskManager {
           status: r.status,
           leadGroup: r.lead_group || "General Coordination"
         }));
+        this.syncStatusesWithRealTime();
         this.saveAndNotify("Synced programmes timeline with Supabase");
         console.log(`[Sangam Tasks] Loaded ${data.length} programmes from Supabase.`);
       }

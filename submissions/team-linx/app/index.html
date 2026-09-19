@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content">
+  <meta name="theme-color" content="#fafaf9">
   <title>Sangam — Event Command Center | Team LINX</title>
   <meta name="description" content="Sangam event command center: schedule programmes, assign roles, coordinate groups, chat and brief with AI.">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23db2777'/%3E%3Ctext x='32' y='44' font-family='sans-serif' font-size='36' font-weight='bold' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
@@ -63,12 +64,12 @@
             <div class="field">
               <label id="pin-label">6-digit event code</label>
               <div class="pin-row" id="pin-input-group" role="group" aria-labelledby="pin-label">
-                <input type="text" maxlength="1" class="pin-digit" value="4" aria-label="Digit 1" inputmode="numeric">
-                <input type="text" maxlength="1" class="pin-digit" value="8" aria-label="Digit 2" inputmode="numeric">
-                <input type="text" maxlength="1" class="pin-digit" value="2" aria-label="Digit 3" inputmode="numeric">
-                <input type="text" maxlength="1" class="pin-digit" value="9" aria-label="Digit 4" inputmode="numeric">
-                <input type="text" maxlength="1" class="pin-digit" value="1" aria-label="Digit 5" inputmode="numeric">
-                <input type="text" maxlength="1" class="pin-digit" value="0" aria-label="Digit 6" inputmode="numeric">
+                <input type="text" maxlength="1" class="pin-digit" value="4" aria-label="Digit 1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
+                <input type="text" maxlength="1" class="pin-digit" value="8" aria-label="Digit 2" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
+                <input type="text" maxlength="1" class="pin-digit" value="2" aria-label="Digit 3" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
+                <input type="text" maxlength="1" class="pin-digit" value="9" aria-label="Digit 4" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
+                <input type="text" maxlength="1" class="pin-digit" value="1" aria-label="Digit 5" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
+                <input type="text" maxlength="1" class="pin-digit" value="0" aria-label="Digit 6" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="done">
               </div>
             </div>
             <button type="submit" class="btn-dark">Join Event Lobby</button>
@@ -83,7 +84,7 @@
     <div class="workspace">
       <div class="workspace-backdrop" id="workspace-backdrop" hidden></div>
 
-      <aside class="sidebar" id="sidebar" aria-label="Workspace navigation">
+      <aside class="sidebar" id="sidebar" aria-label="Workspace navigation" role="dialog" aria-modal="false" aria-hidden="true">
         <div class="brand">
           <div class="brand-mark" aria-hidden="true">S</div>
           <div class="brand-text">
@@ -255,7 +256,7 @@
                 <p class="read-only-banner" id="chat-read-only-banner" hidden></p>
                 <form id="chat-send-form" class="chat-form">
                   <label class="visually-hidden" for="chat-text-input">Message active group</label>
-                  <input type="text" id="chat-text-input" placeholder="Message team…" autocomplete="off">
+                  <input type="text" id="chat-text-input" placeholder="Message team…" autocomplete="off" enterkeyhint="send" maxlength="1000">
                   <button type="submit" class="btn-dark btn-small" id="chat-submit-btn">Send ↑</button>
                 </form>
               </section>
@@ -290,7 +291,7 @@
         </main>
       </div>
 
-      <aside class="ai-rail" id="ai-rail" aria-label="AI briefing">
+      <aside class="ai-rail" id="ai-rail" aria-label="AI briefing" role="dialog" aria-modal="false" aria-hidden="true">
         <div class="ai-head">
           <div class="ai-brand"><span class="ai-mark" aria-hidden="true">✦</span><div><p class="ai-title">AI Briefing</p><p class="ai-online">● Online</p></div></div>
           <button class="icon-btn only-tablet-down" id="btn-close-ai" type="button" aria-label="Close AI briefing">✕</button>
@@ -305,7 +306,7 @@
         <div class="ai-actions"><button class="btn-light btn-small" id="btn-ai-briefing" type="button">✦ Executive Briefing</button></div>
         <form id="gemini-input-form" class="ai-form">
           <label class="visually-hidden" for="gemini-prompt-input">Ask the AI coordinator</label>
-          <input type="text" id="gemini-prompt-input" placeholder="Ask anything…" autocomplete="off">
+          <input type="text" id="gemini-prompt-input" placeholder="Ask anything…" autocomplete="off" enterkeyhint="send" maxlength="1000">
           <button type="submit" class="btn-dark btn-small" aria-label="Send AI prompt">↑</button>
         </form>
       </aside>

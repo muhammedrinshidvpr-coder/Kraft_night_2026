@@ -127,6 +127,11 @@ class AppController {
       if (el) el.hidden = page !== next;
     });
 
+    const contentEl = document.getElementById("workspace-content");
+    if (contentEl) {
+      contentEl.classList.toggle("groups-view-active", next === "groups");
+    }
+
     document.querySelectorAll("[data-workspace-page]").forEach((btn) => {
       const active = btn.dataset.workspacePage === next;
       btn.classList.toggle("active", active);
@@ -139,7 +144,9 @@ class AppController {
 
     if (inWorkspace) this.renderWorkspacePage(next);
     this.closeDrawers();
-    window.scrollTo({ top: 0 });
+    const scroller = document.getElementById("workspace-content");
+    if (scroller) scroller.scrollTo({ top: 0 });
+    else window.scrollTo({ top: 0 });
   }
 
   switchWorkspacePage(page) {
@@ -172,10 +179,16 @@ class AppController {
       btn.addEventListener("click", () => this.switchWorkspacePage(btn.dataset.workspacePage));
     });
     go("btn-open-nav", () => this.openDrawers("nav"));
-    go("btn-close-nav", () => this.closeDrawers());
+    go("btn-close-nav", () => this.closeDrawers("btn-close-nav"));
     go("btn-open-ai", () => this.openDrawers("ai"));
-    go("btn-close-ai", () => this.closeDrawers());
-    go("workspace-backdrop", () => this.closeDrawers());
+    go("btn-close-ai", () => this.closeDrawers("btn-close-ai"));
+    const backdrop = document.getElementById("workspace-backdrop");
+    if (backdrop) {
+      backdrop.addEventListener("click", () => this.closeDrawers());
+      backdrop.addEventListener("pointerdown", () => this.closeDrawers());
+    }
+    this.bindDrawerSwipe();
+    this.bindKeyboardAvoidance();
 
     document.querySelectorAll(".role-btn").forEach((btn) => {
       btn.addEventListener("click", () => {
@@ -208,30 +221,115 @@ class AppController {
     const backdrop = document.getElementById("workspace-backdrop");
     const navBtn = document.getElementById("btn-open-nav");
     const aiBtn = document.getElementById("btn-open-ai");
-    if (which === "nav" && sidebar) sidebar.classList.add("open");
-    if (which === "ai" && rail) rail.classList.add("open");
+    this.lastDrawerFocus = document.activeElement;
+    if (which === "nav" && sidebar) {
+      sidebar.classList.add("open");
+      sidebar.setAttribute("aria-hidden", "false");
+      sidebar.setAttribute("aria-modal", "true");
+    }
+    if (which === "ai" && rail) {
+      rail.classList.add("open");
+      rail.setAttribute("aria-hidden", "false");
+      rail.setAttribute("aria-modal", "true");
+    }
     if (backdrop) {
       backdrop.hidden = false;
       backdrop.classList.add("show");
     }
+    document.body.classList.add("lock-scroll");
     if (navBtn) navBtn.setAttribute("aria-expanded", which === "nav" ? "true" : "false");
     if (aiBtn) aiBtn.setAttribute("aria-expanded", which === "ai" ? "true" : "false");
+    // Move focus into the opened drawer for AT / keyboard users.
+    const target = which === "nav" ? sidebar : rail;
+    const focusable = target ? target.querySelector("button:not([disabled]), input, select, a[href]") : null;
+    if (focusable && window.matchMedia("(max-width: 1180px)").matches) {
+      setTimeout(() => { try { focusable.focus({ preventScroll: true }); } catch {} }, 60);
+    }
   }
 
-  closeDrawers() {
+  closeDrawers(returnFocusTo) {
     const sidebar = document.getElementById("sidebar");
     const rail = document.getElementById("ai-rail");
     const backdrop = document.getElementById("workspace-backdrop");
-    if (sidebar) sidebar.classList.remove("open");
-    if (rail) rail.classList.remove("open");
+    const wasOpen = (sidebar && sidebar.classList.contains("open")) || (rail && rail.classList.contains("open"));
+    if (sidebar) {
+      sidebar.classList.remove("open");
+      sidebar.setAttribute("aria-hidden", "true");
+      sidebar.removeAttribute("aria-modal");
+    }
+    if (rail) {
+      rail.classList.remove("open");
+      rail.setAttribute("aria-hidden", "true");
+      rail.removeAttribute("aria-modal");
+    }
     if (backdrop) {
       backdrop.classList.remove("show");
       backdrop.hidden = true;
     }
+    document.body.classList.remove("lock-scroll");
     const navBtn = document.getElementById("btn-open-nav");
     const aiBtn = document.getElementById("btn-open-ai");
     if (navBtn) navBtn.setAttribute("aria-expanded", "false");
     if (aiBtn) aiBtn.setAttribute("aria-expanded", "false");
+    if (wasOpen) {
+      const fallback = document.getElementById(returnFocusTo) || this.lastDrawerFocus;
+      if (fallback && document.contains(fallback)) {
+        try { fallback.focus({ preventScroll: true }); } catch {}
+      }
+      this.lastDrawerFocus = null;
+    }
+  }
+
+  bindDrawerSwipe() {
+    if (this.drawerSwipeBound) return;
+    this.drawerSwipeBound = true;
+    let startX = null;
+    let startY = null;
+    document.addEventListener("touchstart", (e) => {
+      if (e.touches.length !== 1) return;
+      startX = e.touches[0].clientX;
+      startY = e.touches[0].clientY;
+    }, { passive: true });
+    document.addEventListener("touchend", (e) => {
+      if (startX === null) return;
+      const dx = e.changedTouches[0].clientX - startX;
+      const dy = e.changedTouches[0].clientY - startY;
+      startX = null;
+      startY = null;
+      if (Math.abs(dy) > 60 || Math.abs(dx) < 70) return;
+      const sidebar = document.getElementById("sidebar");
+      const rail = document.getElementById("ai-rail");
+      if (dx < 0 && sidebar && sidebar.classList.contains("open")) this.closeDrawers();
+      if (dx > 0 && rail && rail.classList.contains("open")) this.closeDrawers();
+    }, { passive: true });
+    // Android system Back closes drawer first via history trap.
+    window.addEventListener("popstate", () => this.closeDrawers());
+  }
+
+  bindKeyboardAvoidance() {
+    if (this.keyboardBound) return;
+    this.keyboardBound = true;
+    ["chat-text-input", "gemini-prompt-input"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.addEventListener("focus", () => {
+        setTimeout(() => {
+          try { el.scrollIntoView({ block: "nearest", behavior: "smooth" }); } catch {}
+        }, 250);
+      });
+    });
+    if (window.visualViewport) {
+      let t = null;
+      window.visualViewport.addEventListener("resize", () => {
+        clearTimeout(t);
+        t = setTimeout(() => {
+          const active = document.activeElement;
+          if (active && (active.id === "chat-text-input" || active.id === "gemini-prompt-input")) {
+            try { active.scrollIntoView({ block: "nearest" }); } catch {}
+          }
+        }, 100);
+      });
+    }
   }
 
   bindSessionPopover() {
@@ -239,13 +337,24 @@ class AppController {
     const pop = document.getElementById("profile-popover");
     const close = document.getElementById("btn-profile-close");
     if (!btn || !pop) return;
-    btn.addEventListener("click", () => {
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
       const willOpen = pop.hidden;
       pop.hidden = !willOpen;
       btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
       if (willOpen) this.syncRoleButtons();
     });
     if (close) close.addEventListener("click", () => this.closePopover());
+    if (!this.popoverOutsideBound) {
+      this.popoverOutsideBound = true;
+      document.addEventListener("pointerdown", (e) => {
+        const p = document.getElementById("profile-popover");
+        const b = document.getElementById("profile-btn");
+        if (!p || p.hidden) return;
+        if (p.contains(e.target) || (b && b.contains(e.target))) return;
+        this.closePopover();
+      });
+    }
   }
 
   closePopover() {
@@ -303,11 +412,39 @@ class AppController {
     const pinInputs = document.querySelectorAll(".pin-digit");
     pinInputs.forEach((input, index) => {
       input.addEventListener("input", () => {
-        input.value = input.value.replace(/[^0-9]/g, "").slice(0, 1);
+        const digits = input.value.replace(/[^0-9]/g, "");
+        if (digits.length > 1) {
+          // Paste / autofill split across boxes (mobile SMS code).
+          digits.slice(0, pinInputs.length - index).split("").forEach((d, k) => {
+            if (pinInputs[index + k]) pinInputs[index + k].value = d;
+          });
+          const next = pinInputs[Math.min(index + digits.length, pinInputs.length - 1)];
+          if (next) next.focus();
+          return;
+        }
+        input.value = digits.slice(0, 1);
         if (input.value.length === 1 && index < pinInputs.length - 1) pinInputs[index + 1].focus();
       });
       input.addEventListener("keydown", (e) => {
-        if (e.key === "Backspace" && !input.value && index > 0) pinInputs[index - 1].focus();
+        if ((e.key === "Backspace" || e.key === "Delete") && !input.value && index > 0) {
+          e.preventDefault();
+          pinInputs[index - 1].focus();
+          pinInputs[index - 1].value = "";
+        }
+        if (e.key === "ArrowLeft" && index > 0) pinInputs[index - 1].focus();
+        if (e.key === "ArrowRight" && index < pinInputs.length - 1) pinInputs[index + 1].focus();
+      });
+      input.addEventListener("focus", () => { try { input.select(); } catch {} });
+      input.addEventListener("paste", (e) => {
+        const text = (e.clipboardData ? e.clipboardData.getData("text") : "") || "";
+        const digits = text.replace(/[^0-9]/g, "");
+        if (!digits) return;
+        e.preventDefault();
+        digits.slice(0, pinInputs.length - index).split("").forEach((d, k) => {
+          if (pinInputs[index + k]) pinInputs[index + k].value = d;
+        });
+        const next = pinInputs[Math.min(index + digits.length, pinInputs.length - 1)];
+        if (next) next.focus();
       });
     });
 
@@ -489,6 +626,9 @@ class AppController {
         const row = document.createElement("div");
         row.className = `timeline-row${isActive ? " active" : ""}${prog.status === "completed" ? " dim" : ""}`;
         row.setAttribute("role", "listitem");
+        row.setAttribute("tabindex", "0");
+        row.setAttribute("aria-label", `${prog.title} — ${pill.label}. Activate to view assignments.`);
+        if (isActive) row.setAttribute("aria-current", "true");
         const dotColor = prog.status === "in_progress" ? "#ef4444" : prog.status === "completed" ? "#d1d5db" : prog.status === "delayed" ? "#f59e0b" : "#8b5cf6";
         const people = (prog.leadGroup ? this.state.joinedPeople.filter((m) => m.groupName === prog.leadGroup).slice(0, 4) : []).map((m) => `
           <span class="mini-person"><span class="avatar" style="color:${esc(colorFor(m.name))}">${esc(initialsFor(m.name))}</span><span>${esc(m.name)}</span><span class="role">${esc(m.roleBadge || m.role)}</span></span>
@@ -510,14 +650,25 @@ class AppController {
             ${isActive && auth.canEditProgramme() ? `<div class="status-row"><button type="button" class="btn-light btn-small" data-cycle="${esc(prog.id)}">Advance status</button></div>` : ""}
           </div>
         `;
+        const selectRow = () => {
+          this.selectedProgramId = prog.id;
+          this.renderDashboard();
+        };
         row.addEventListener("click", (e) => {
           const cycleBtn = e.target.closest("[data-cycle]");
           if (cycleBtn) {
+            e.stopPropagation();
             taskManager.cycleProgrammeStatus(cycleBtn.dataset.cycle);
             return;
           }
-          this.selectedProgramId = prog.id;
-          this.renderDashboard();
+          selectRow();
+        });
+        row.addEventListener("keydown", (e) => {
+          if (e.target.closest("[data-cycle]")) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            selectRow();
+          }
         });
         list.appendChild(row);
       });
@@ -674,7 +825,19 @@ class AppController {
       if (cycle) cycle.addEventListener("click", () => taskManager.cycleProgrammeStatus(prog.id));
       const del = row.querySelector("[data-delete]");
       if (del) del.addEventListener("click", () => {
-        if (confirm(`Remove "${prog.title}" from the schedule?`)) taskManager.deleteProgramme(prog.id);
+        // Native confirm is system-sized on mobile and keeps ui-smoke hook
+        // (test stubs confirm()->true). Two-tap arm as fallback if blocked.
+        try {
+          if (window.confirm(`Remove "${prog.title}" from the schedule?`)) taskManager.deleteProgramme(prog.id);
+          return;
+        } catch {}
+        if (del.dataset.armed === "1") {
+          taskManager.deleteProgramme(prog.id);
+          return;
+        }
+        del.dataset.armed = "1";
+        del.textContent = "Tap to confirm";
+        setTimeout(() => { if (del.isConnected) { del.dataset.armed = ""; del.textContent = "Delete"; } }, 3000);
       });
       list.appendChild(row);
     });
@@ -727,10 +890,13 @@ class AppController {
         const btn = document.createElement("button");
         btn.type = "button";
         btn.className = `group-btn${active ? " active" : ""}`;
-        btn.setAttribute("role", "listitem");
+        const previewText = last ? `${last.senderName}: ${last.text}` : (group.description || "No messages yet");
         btn.innerHTML = `
-          <span class="group-top"><span class="group-name">${esc(group.icon || "👥")} ${esc(group.name)}</span><span class="pill neutral">${esc(String(group.memberCount || 10))} members</span></span>
-          <span class="group-preview">${esc(last ? `${last.senderName}: ${last.text}` : (group.description || "No messages yet"))}</span>
+          <span class="group-top">
+            <span class="group-name" title="${esc(group.name)}">${esc(group.icon || "👥")} ${esc(group.name)}</span>
+            <span class="pill neutral">${esc(String(group.memberCount || 10))} members</span>
+          </span>
+          <span class="group-preview" title="${esc(previewText)}">${esc(previewText)}</span>
         `;
         btn.addEventListener("click", () => {
           chatManager.setActiveGroup(group.id);
@@ -792,8 +958,13 @@ class AppController {
   renderChatMessages(messages) {
     const container = document.getElementById("chat-bubbles-scroll");
     if (!container) return;
+    // Preserve scroll: only jump to bottom if user was already near bottom
+    // (avoids yanking the Groups directory header off-screen on mobile).
+    const nearBottom = (container.scrollHeight - container.scrollTop - container.clientHeight) < 120;
+    const firstRender = !container.dataset.rendered;
     // Only render the active chat page content; container exists even when hidden.
     container.innerHTML = "";
+    container.dataset.rendered = "1";
     const currentUser = auth.getCurrentUser();
     if (!messages || messages.length === 0) {
       container.innerHTML = '<p class="empty">No messages yet. Start the coordination here.</p>';
@@ -809,7 +980,9 @@ class AppController {
       `;
       container.appendChild(row);
     });
-    container.scrollTop = container.scrollHeight;
+    if (firstRender || nearBottom || document.activeElement?.id === "chat-text-input") {
+      container.scrollTop = container.scrollHeight;
+    }
   }
 
   // --------------------------------------------------------------------- about
