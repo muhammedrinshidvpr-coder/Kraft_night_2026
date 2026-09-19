@@ -40,6 +40,76 @@
     </div>
   </section>
 
+  <!-- Entry view: Login (Update Event Page Design 2 port) -->
+  <section class="view-container entry-new" id="view-login" aria-labelledby="login-title" hidden>
+    <div class="entry-aurora aurora-login" aria-hidden="true">
+      <span class="blob b1"></span>
+      <span class="blob b2"></span>
+      <span class="blob b3"></span>
+    </div>
+    <nav class="entry-nav" aria-label="Login navigation">
+      <button class="entry-brand-btn" id="btn-login-to-landing" type="button">Sangam</button>
+      <button class="entry-auth-switch-btn" id="btn-login-to-signup" type="button">
+        Don't have an account? <span class="highlight">Sign up</span>
+      </button>
+    </nav>
+    <main class="entry-auth-wrap">
+      <div class="entry-auth-card">
+        <h1 class="entry-auth-title" id="login-title">Welcome back</h1>
+        <p class="entry-auth-sub">Sign in to your Sangam account</p>
+        <div id="login-alert" class="entry-auth-alert" hidden></div>
+        <form id="login-form" class="entry-auth-form" novalidate>
+          <div class="entry-auth-field">
+            <label class="entry-auth-label" for="input-login-name">Name</label>
+            <input class="entry-auth-input" type="text" id="input-login-name" required placeholder="Your name" autocomplete="name">
+          </div>
+          <div class="entry-auth-field">
+            <label class="entry-auth-label" for="input-login-password">Password</label>
+            <input class="entry-auth-input" type="password" id="input-login-password" required placeholder="••••••••" autocomplete="current-password">
+          </div>
+          <button type="submit" class="entry-auth-submit" id="btn-login-submit">Log in</button>
+        </form>
+      </div>
+    </main>
+  </section>
+
+  <!-- Entry view: Sign Up (Update Event Page Design 2 port) -->
+  <section class="view-container entry-new" id="view-signup" aria-labelledby="signup-title" hidden>
+    <div class="entry-aurora aurora-signup" aria-hidden="true">
+      <span class="blob b1"></span>
+      <span class="blob b2"></span>
+      <span class="blob b3"></span>
+    </div>
+    <nav class="entry-nav" aria-label="Sign up navigation">
+      <button class="entry-brand-btn" id="btn-signup-to-landing" type="button">Sangam</button>
+      <button class="entry-auth-switch-btn" id="btn-signup-to-login" type="button">
+        Already have an account? <span class="highlight">Log in</span>
+      </button>
+    </nav>
+    <main class="entry-auth-wrap">
+      <div class="entry-auth-card">
+        <h1 class="entry-auth-title" id="signup-title">Create your account</h1>
+        <p class="entry-auth-sub">Start hosting events with Sangam today</p>
+        <div id="signup-alert" class="entry-auth-alert" hidden></div>
+        <form id="signup-form" class="entry-auth-form" novalidate>
+          <div class="entry-auth-field">
+            <label class="entry-auth-label" for="input-signup-name">Name</label>
+            <input class="entry-auth-input" type="text" id="input-signup-name" required placeholder="Your full name" autocomplete="name">
+          </div>
+          <div class="entry-auth-field">
+            <label class="entry-auth-label" for="input-signup-email">Gmail</label>
+            <input class="entry-auth-input" type="email" id="input-signup-email" required placeholder="you@gmail.com" autocomplete="email">
+          </div>
+          <div class="entry-auth-field">
+            <label class="entry-auth-label" for="input-signup-password">Password</label>
+            <input class="entry-auth-input" type="password" id="input-signup-password" required placeholder="••••••••" autocomplete="new-password">
+          </div>
+          <button type="submit" class="entry-auth-submit" id="btn-signup-submit">Create account</button>
+        </form>
+      </div>
+    </main>
+  </section>
+
   <!-- Entry view: event gateway (reskinned to match new entry) -->
   <section class="view-container entry-new" id="view-gateway" aria-labelledby="gateway-title" hidden>
     <div class="entry-aurora" aria-hidden="true">
@@ -50,15 +120,18 @@
       <span class="blob b5"></span>
     </div>
     <nav class="entry-nav" aria-label="Gateway navigation">
-      <span class="entry-brand">Sangam</span>
+      <button class="entry-brand-btn" id="btn-gateway-to-landing" type="button">Sangam</button>
       <div class="entry-nav-actions">
-        <button class="entry-btn ghost gateway-back-btn" type="button" data-goto="landing">← Back</button>
+        <button class="entry-btn ghost gateway-back-btn" id="btn-gateway-back" type="button">← Back</button>
       </div>
     </nav>
     <div class="entry-wrap gateway-wrap">
       <div class="gateway-head">
         <h1 class="entry-display gateway-title" id="gateway-title">Event Collaboration Gateway</h1>
         <p class="entry-sub">Choose an action to proceed into the command workspace.</p>
+        <div class="gateway-user-tag" id="gateway-active-user-badge">
+          <span>Signed in as <strong id="gateway-active-user-name">Sarah Jenkins</strong></span>
+        </div>
       </div>
       <div class="gateway-grid">
         <div class="card gateway-card">

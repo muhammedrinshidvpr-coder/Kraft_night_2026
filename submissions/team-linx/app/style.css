@@ -111,6 +111,165 @@ button, input, select, textarea { font: inherit; }
   .entry-new .entry-sub { font-size: 1rem; }
 }
 
+/* Auth views — Login & SignUp (faithful port of Update Event Page Design 2) */
+.entry-auth-wrap {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 24px;
+  min-height: calc(100vh - 80px);
+}
+.entry-auth-card {
+  width: 100%;
+  max-width: 400px;
+}
+.entry-auth-title {
+  font-family: "DM Serif Display", serif;
+  font-size: 2.25rem;
+  font-weight: 400;
+  letter-spacing: -0.02em;
+  margin: 0 0 8px;
+  color: #0a0a0a;
+}
+.entry-auth-sub {
+  font-size: 0.95rem;
+  color: rgba(0, 0, 0, 0.45);
+  margin: 0 0 36px;
+  font-weight: 300;
+}
+.entry-auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.entry-auth-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  text-align: left;
+}
+.entry-auth-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: rgba(0, 0, 0, 0.55);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.entry-auth-input {
+  padding: 12px 16px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(0, 0, 0, 0.12);
+  font-size: 0.95rem;
+  font-family: inherit;
+  outline: none;
+  background: rgba(0, 0, 0, 0.02);
+  color: #0a0a0a;
+  transition: border-color 0.15s ease, background 0.15s ease;
+  width: 100%;
+}
+.entry-auth-input:focus {
+  border-color: #0a0a0a;
+  background: #ffffff;
+}
+.entry-auth-submit {
+  margin-top: 8px;
+  padding: 14px;
+  border-radius: 12px;
+  background: #0a0a0a;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.12);
+  font-family: inherit;
+  width: 100%;
+}
+.entry-auth-submit:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+}
+.entry-auth-switch-btn {
+  font-size: 0.875rem;
+  color: rgba(0, 0, 0, 0.5);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s ease;
+  padding: 0;
+}
+.entry-auth-switch-btn:hover {
+  color: #0a0a0a;
+}
+.entry-auth-switch-btn .highlight {
+  font-weight: 600;
+  color: #0a0a0a;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.entry-brand-btn {
+  font-family: "DM Serif Display", serif;
+  font-size: 1.35rem;
+  color: #0a0a0a;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.entry-brand-btn:hover {
+  opacity: 0.85;
+}
+.entry-auth-alert {
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  line-height: 1.4;
+  margin-bottom: 8px;
+}
+.entry-auth-alert.error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #b91c1c;
+}
+.entry-auth-alert.success {
+  background: #ecfdf5;
+  border: 1px solid #a7f3d0;
+  color: #047857;
+}
+
+/* Specific blob placements for login and signup from Figma */
+.aurora-login .b1 { width: 600px; height: 600px; top: -150px; left: -150px; background: radial-gradient(circle, rgba(0,210,190,0.15) 0%, transparent 70%); filter: blur(80px); }
+.aurora-login .b2 { width: 500px; height: 500px; bottom: -100px; right: -100px; background: radial-gradient(circle, rgba(230,80,180,0.13) 0%, transparent 70%); filter: blur(80px); }
+.aurora-login .b3 { width: 400px; height: 400px; top: 40%; right: 10%; background: radial-gradient(circle, rgba(110,60,240,0.08) 0%, transparent 70%); filter: blur(70px); }
+
+.aurora-signup .b1 { width: 600px; height: 600px; top: -150px; right: -150px; background: radial-gradient(circle, rgba(230,80,180,0.14) 0%, transparent 70%); filter: blur(80px); }
+.aurora-signup .b2 { width: 500px; height: 500px; bottom: -100px; left: -100px; background: radial-gradient(circle, rgba(0,210,190,0.13) 0%, transparent 70%); filter: blur(80px); }
+.aurora-signup .b3 { width: 400px; height: 400px; top: 30%; left: 8%; background: radial-gradient(circle, rgba(110,60,240,0.08) 0%, transparent 70%); filter: blur(70px); }
+
+/* Gateway user badge */
+.gateway-user-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: #374151;
+  margin-top: 12px;
+}
+.gateway-user-tag strong {
+  color: #0a0a0a;
+}
+
 /* Workspace shell */
 #view-workspace.active { display: block; height: 100vh; height: 100svh; height: 100dvh; overflow: hidden; }
 .workspace { display: flex; height: 100vh; height: 100svh; height: 100dvh; overflow: hidden; background: var(--bg); position: relative; }

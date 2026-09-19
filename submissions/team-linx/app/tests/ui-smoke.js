@@ -213,10 +213,58 @@ async function run() {
     s.doc.getElementById("btn-logout").click();
     await sleep(200);
     s = await waitForApp();
-    const isLanding = s.app.currentView === "landing"
-      && !s.doc.getElementById("view-landing").hidden
+    const isLoginView = s.app.currentView === "login"
+      && !s.doc.getElementById("view-login").hidden
       && s.doc.getElementById("view-workspace").hidden;
-    allPass = report("logout redirects to entry landing page and hides workspace", isLanding) && allPass;
+    allPass = report("logout redirects to entry Login page and hides workspace", isLoginView) && allPass;
+
+    // 11. FEATURE VERIFICATION: Sign Up creates a new user, updates auth, and opens Gateway.
+    s.doc.getElementById("btn-login-to-signup").click();
+    await sleep(200);
+    s = await waitForApp();
+    const isSignUpView = s.app.currentView === "signup" && !s.doc.getElementById("view-signup").hidden;
+    allPass = report("navigation switches from Login to Sign Up view", isSignUpView) && allPass;
+
+    const testUser = "Alex Rivera";
+    s.doc.getElementById("input-signup-name").value = testUser;
+    s.doc.getElementById("input-signup-email").value = "alex.rivera@example.com";
+    s.doc.getElementById("input-signup-password").value = "securepass123";
+    s.doc.getElementById("signup-form").dispatchEvent(new s.win.Event("submit", { bubbles: true, cancelable: true }));
+    await sleep(400);
+    s = await waitForApp();
+
+    const isGatewayAfterSignUp = s.app.currentView === "gateway" && !s.doc.getElementById("view-gateway").hidden;
+    const badgeText = s.doc.getElementById("gateway-active-user-name").textContent;
+    const userRecognized = badgeText.includes(testUser);
+    allPass = report("Sign Up authenticates new user and navigates to Event Gateway", isGatewayAfterSignUp && userRecognized) && allPass;
+
+    // 12. FEATURE VERIFICATION: Creating an event assigns the logged-in user as Manager.
+    const customEventTitle = "Global Tech Fest 2026";
+    s.doc.getElementById("input-event-title").value = customEventTitle;
+    s.doc.getElementById("create-event-form").dispatchEvent(new s.win.Event("submit", { bubbles: true, cancelable: true }));
+    await sleep(400);
+    s = await waitForApp();
+
+    const inWorkspaceAfterCreate = s.app.currentView === "dashboard" && !s.doc.getElementById("view-workspace").hidden;
+    const sideEventTitle = s.doc.getElementById("side-event-title").textContent;
+    const userRoleDisplay = s.doc.getElementById("user-name-display").textContent;
+    allPass = report("creating an event enters Workspace Dashboard with user as Manager", inWorkspaceAfterCreate && sideEventTitle === customEventTitle && userRoleDisplay === testUser) && allPass;
+
+    // 13. FEATURE VERIFICATION: Logging out and logging back in with credentials.
+    s.doc.getElementById("btn-sidebar-logout").click();
+    await sleep(200);
+    s = await waitForApp();
+    const isLoginAgain = s.app.currentView === "login";
+    allPass = report("sidebar logout returns to Login view", isLoginAgain) && allPass;
+
+    s.doc.getElementById("input-login-name").value = testUser;
+    s.doc.getElementById("input-login-password").value = "securepass123";
+    s.doc.getElementById("login-form").dispatchEvent(new s.win.Event("submit", { bubbles: true, cancelable: true }));
+    await sleep(400);
+    s = await waitForApp();
+    const isGatewayAfterLogin = s.app.currentView === "gateway"
+      && s.doc.getElementById("gateway-active-user-name").textContent.includes(testUser);
+    allPass = report("Login authenticates credentials and opens Event Gateway", isGatewayAfterLogin) && allPass;
 
     report("overall smoke result", allPass);
   } catch (err) {

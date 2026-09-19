@@ -10,7 +10,7 @@ import { chatManager } from "./chat.js";
 import { aiCoordinator } from "./ai.js";
 
 const WORKSPACE_PAGES = ["dashboard", "assign-roles", "create-program", "groups", "about-event"];
-const ALL_VIEWS = ["landing", "gateway", ...WORKSPACE_PAGES];
+const ALL_VIEWS = ["landing", "login", "signup", "gateway", ...WORKSPACE_PAGES];
 const PAGE_TITLES = {
   dashboard: "Dashboard",
   "assign-roles": "Assign Roles",
@@ -71,6 +71,7 @@ class AppController {
   init() {
     auth.onUserChange((user) => this.handleUserRoleChanged(user));
     this.bindViewNavigation();
+    this.bindAuthForms();
     this.bindEntryEffects();
     this.bindGatewayForms();
     this.bindWorkspaceForms();
@@ -118,6 +119,8 @@ class AppController {
     }
 
     const landing = document.getElementById("view-landing");
+    const login = document.getElementById("view-login");
+    const signup = document.getElementById("view-signup");
     const gateway = document.getElementById("view-gateway");
     const workspace = document.getElementById("view-workspace");
     const inWorkspace = WORKSPACE_PAGES.includes(next);
@@ -125,9 +128,30 @@ class AppController {
       landing.classList.toggle("active", next === "landing");
       landing.hidden = next !== "landing";
     }
+    if (login) {
+      login.classList.toggle("active", next === "login");
+      login.hidden = next !== "login";
+      if (next === "login") {
+        const alertEl = document.getElementById("login-alert");
+        if (alertEl) alertEl.hidden = true;
+        const input = document.getElementById("input-login-name");
+        if (input) setTimeout(() => input.focus(), 60);
+      }
+    }
+    if (signup) {
+      signup.classList.toggle("active", next === "signup");
+      signup.hidden = next !== "signup";
+      if (next === "signup") {
+        const alertEl = document.getElementById("signup-alert");
+        if (alertEl) alertEl.hidden = true;
+        const input = document.getElementById("input-signup-name");
+        if (input) setTimeout(() => input.focus(), 60);
+      }
+    }
     if (gateway) {
       gateway.classList.toggle("active", next === "gateway");
       gateway.hidden = next !== "gateway";
+      this.updateGatewayUserDisplay();
     }
     if (workspace) {
       workspace.classList.toggle("active", inWorkspace);
@@ -184,15 +208,15 @@ class AppController {
       const el = document.getElementById(id);
       if (el) el.addEventListener("click", fn);
     };
-    go("hero-get-started-btn", () => this.switchView("gateway"));
-    go("nav-signup-btn", () => this.switchView("gateway"));
-    go("nav-login-btn", () => {
-      this.switchView("gateway");
-      requestAnimationFrame(() => {
-        const firstPin = document.querySelector("#pin-input-group .pin-digit");
-        if (firstPin) firstPin.focus({ preventScroll: true });
-      });
-    });
+    go("hero-get-started-btn", () => this.switchView("signup"));
+    go("nav-signup-btn", () => this.switchView("signup"));
+    go("nav-login-btn", () => this.switchView("login"));
+    go("btn-login-to-landing", () => this.switchView("landing"));
+    go("btn-login-to-signup", () => this.switchView("signup"));
+    go("btn-signup-to-landing", () => this.switchView("landing"));
+    go("btn-signup-to-login", () => this.switchView("login"));
+    go("btn-gateway-to-landing", () => this.switchView("landing"));
+    go("btn-gateway-back", () => this.switchView("login"));
     document.querySelectorAll('[data-goto="landing"]').forEach((btn) => {
       btn.addEventListener("click", () => this.switchView("landing"));
     });
@@ -242,6 +266,91 @@ class AppController {
         this.closeEditProgramModal();
       }
     });
+  }
+
+  bindAuthForms() {
+    const loginForm = document.getElementById("login-form");
+    const loginAlert = document.getElementById("login-alert");
+    if (loginForm) {
+      loginForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const nameInput = document.getElementById("input-login-name");
+        const passInput = document.getElementById("input-login-password");
+        const name = nameInput ? nameInput.value.trim() : "";
+        const password = passInput ? passInput.value : "";
+
+        if (loginAlert) {
+          loginAlert.hidden = true;
+          loginAlert.className = "entry-auth-alert";
+        }
+
+        try {
+          const user = await auth.signIn({ name, password });
+          if (loginAlert) {
+            loginAlert.textContent = `Welcome back, ${user.name}!`;
+            loginAlert.className = "entry-auth-alert success";
+            loginAlert.hidden = false;
+          }
+          setTimeout(() => {
+            this.updateGatewayUserDisplay();
+            this.switchView("gateway");
+          }, 350);
+        } catch (err) {
+          if (loginAlert) {
+            loginAlert.textContent = err.message || "Failed to log in.";
+            loginAlert.className = "entry-auth-alert error";
+            loginAlert.hidden = false;
+          }
+        }
+      });
+    }
+
+    const signupForm = document.getElementById("signup-form");
+    const signupAlert = document.getElementById("signup-alert");
+    if (signupForm) {
+      signupForm.addEventListener("submit", async (e) => {
+        e.preventDefault();
+        const nameInput = document.getElementById("input-signup-name");
+        const emailInput = document.getElementById("input-signup-email");
+        const passInput = document.getElementById("input-signup-password");
+
+        const name = nameInput ? nameInput.value.trim() : "";
+        const email = emailInput ? emailInput.value.trim() : "";
+        const password = passInput ? passInput.value : "";
+
+        if (signupAlert) {
+          signupAlert.hidden = true;
+          signupAlert.className = "entry-auth-alert";
+        }
+
+        try {
+          const user = await auth.signUp({ name, email, password });
+          if (signupAlert) {
+            signupAlert.textContent = `Account created! Welcome, ${user.name}.`;
+            signupAlert.className = "entry-auth-alert success";
+            signupAlert.hidden = false;
+          }
+          setTimeout(() => {
+            this.updateGatewayUserDisplay();
+            this.switchView("gateway");
+          }, 350);
+        } catch (err) {
+          if (signupAlert) {
+            signupAlert.textContent = err.message || "Failed to create account.";
+            signupAlert.className = "entry-auth-alert error";
+            signupAlert.hidden = false;
+          }
+        }
+      });
+    }
+  }
+
+  updateGatewayUserDisplay() {
+    const user = auth.getCurrentUser();
+    const nameEl = document.getElementById("gateway-active-user-name");
+    if (nameEl && user) {
+      nameEl.textContent = `${user.name} (${(user.role || "manager").toUpperCase()})`;
+    }
   }
 
   bindEntryEffects() {
@@ -432,8 +541,8 @@ class AppController {
   logout() {
     this.closePopover();
     this.closeDrawers();
-    auth.setRole("manager");
-    this.switchView("landing");
+    auth.logout();
+    this.switchView("login");
   }
 
   syncRoleButtons() {
@@ -468,6 +577,7 @@ class AppController {
         const input = document.getElementById("input-event-title");
         const title = (input?.value || "").trim() || "Kraft Night 2026";
         const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const currentUser = auth.getCurrentUser();
         this.state.currentEvent = {
           id: "evt-" + Date.now(),
           title,
@@ -475,8 +585,12 @@ class AppController {
           venue: "Main Auditorium & Campus",
           status: "active",
           created_at: new Date().toISOString(),
+          manager_id: currentUser ? currentUser.id : "usr-manager",
+          manager_name: currentUser ? currentUser.name : "Sarah Jenkins",
         };
-        auth.setRole("manager");
+        if (currentUser && currentUser.role !== "manager") {
+          auth.setCustomUser({ ...currentUser, role: "manager", department: "Event Organizer" });
+        }
         this.syncRoleButtons();
         this.persistState();
         this.updateEventDisplay();
