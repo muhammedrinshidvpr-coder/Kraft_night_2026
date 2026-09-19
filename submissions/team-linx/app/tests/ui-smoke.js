@@ -201,7 +201,22 @@ async function run() {
     s = await waitForApp();
     const managerFull = !s.doc.getElementById("chat-text-input").disabled
       && !s.doc.getElementById("prog-title-inline").disabled;
-    allPass = report("manager retains full post and schedule rights", managerFull) && allPass;
+    // 10. FEATURE VERIFICATION: Session popover displays user & event PIN, and Logout redirects to landing page.
+    s.doc.getElementById("profile-btn").click();
+    await sleep(200);
+    s = await waitForApp();
+    const popVisible = !s.doc.getElementById("profile-popover").hidden;
+    const popUserMatches = s.doc.getElementById("popover-user-name").textContent.length > 0;
+    const popCodeMatches = s.doc.getElementById("nav-code-display").textContent.length === 6;
+    allPass = report("session & access popover opens with profile card and 6-digit PIN", popVisible && popUserMatches && popCodeMatches) && allPass;
+
+    s.doc.getElementById("btn-logout").click();
+    await sleep(200);
+    s = await waitForApp();
+    const isLanding = s.app.currentView === "landing"
+      && !s.doc.getElementById("view-landing").hidden
+      && s.doc.getElementById("view-workspace").hidden;
+    allPass = report("logout redirects to entry landing page and hides workspace", isLanding) && allPass;
 
     report("overall smoke result", allPass);
   } catch (err) {

@@ -200,6 +200,8 @@ class AppController {
       this.closePopover();
       this.switchView("gateway");
     });
+    go("btn-logout", () => this.logout());
+    go("btn-sidebar-logout", () => this.logout());
     document.querySelectorAll("[data-workspace-page]").forEach((btn) => {
       btn.addEventListener("click", () => this.switchWorkspacePage(btn.dataset.workspacePage));
     });
@@ -227,8 +229,9 @@ class AppController {
       copyBtn.addEventListener("click", () => {
         const code = this.state.currentEvent?.sixDigitCode || "";
         if (navigator.clipboard) navigator.clipboard.writeText(code).catch(() => {});
-        copyBtn.textContent = "Copied";
-        setTimeout(() => { copyBtn.textContent = "Copy"; }, 1200);
+        const labelEl = document.getElementById("btn-copy-label") || copyBtn;
+        labelEl.textContent = "Copied!";
+        setTimeout(() => { labelEl.textContent = "Copy"; }, 2000);
       });
     }
 
@@ -399,7 +402,12 @@ class AppController {
       const willOpen = pop.hidden;
       pop.hidden = !willOpen;
       btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
-      if (willOpen) this.syncRoleButtons();
+      if (willOpen) {
+        this.syncRoleButtons();
+        const curUser = auth.getCurrentUser();
+        if (curUser) this.handleUserRoleChanged(curUser);
+        this.updateEventDisplay();
+      }
     });
     if (close) close.addEventListener("click", () => this.closePopover());
     if (!this.popoverOutsideBound) {
@@ -419,6 +427,13 @@ class AppController {
     const btn = document.getElementById("profile-btn");
     if (pop) pop.hidden = true;
     if (btn) btn.setAttribute("aria-expanded", "false");
+  }
+
+  logout() {
+    this.closePopover();
+    this.closeDrawers();
+    auth.setRole("manager");
+    this.switchView("landing");
   }
 
   syncRoleButtons() {
@@ -1341,6 +1356,21 @@ class AppController {
       initialsEl.textContent = initialsFor(user.name);
       initialsEl.style.color = colorFor(user.name);
     }
+    // Update Session & access popover active profile card
+    const popName = document.getElementById("popover-user-name");
+    const popDept = document.getElementById("popover-user-dept");
+    const popBadge = document.getElementById("popover-user-role-badge");
+    const popAvatar = document.getElementById("popover-user-avatar");
+    if (popName) popName.textContent = user.name;
+    if (popDept) popDept.textContent = user.department || user.roleLabel || user.role;
+    if (popBadge) {
+      popBadge.textContent = user.role.toUpperCase();
+      popBadge.className = `role-tag role-${user.role}`;
+    }
+    if (popAvatar) {
+      popAvatar.textContent = initialsFor(user.name);
+      popAvatar.style.color = colorFor(user.name);
+    }
     this.syncRoleButtons();
     this.renderAssignRoles();
     this.renderProgramsPage();
@@ -1354,9 +1384,11 @@ class AppController {
     const titleEl = document.getElementById("side-event-title");
     const codeEl = document.getElementById("side-event-code");
     const navCodeEl = document.getElementById("nav-code-display");
+    const popTitleEl = document.getElementById("popover-event-title");
     if (titleEl) titleEl.textContent = evt.title || "Kraft Night 2026";
     if (codeEl) codeEl.textContent = `PIN: ${evt.sixDigitCode || "—"}`;
     if (navCodeEl) navCodeEl.textContent = evt.sixDigitCode || "—";
+    if (popTitleEl) popTitleEl.textContent = evt.title || "Kraft Night 2026";
     this.renderAbout();
   }
 

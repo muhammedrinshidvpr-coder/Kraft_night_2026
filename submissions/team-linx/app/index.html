@@ -133,6 +133,9 @@
             </span>
             <span class="role-tag role-manager" id="user-role-badge">MANAGER</span>
           </button>
+          <button class="icon-btn sidebar-logout-btn" id="btn-sidebar-logout" type="button" aria-label="Log out" title="Log out">
+            <span aria-hidden="true">⎋</span>
+          </button>
         </div>
       </aside>
 
@@ -329,19 +332,88 @@
       </aside>
     </div>
 
-    <div class="popover" id="profile-popover" role="dialog" aria-modal="false" aria-labelledby="profile-popover-title" hidden>
-      <div class="popover-head"><h2 id="profile-popover-title">Session &amp; access</h2><button class="icon-btn" id="btn-profile-close" type="button" aria-label="Close session panel">✕</button></div>
-      <p class="section-label">Active role</p>
-      <div class="role-list" role="group" aria-label="Switch evaluator role">
-        <button class="role-btn" type="button" data-role="manager">Manager</button>
-        <button class="role-btn" type="button" data-role="overseer">VIP Overseer (Principal)</button>
-        <button class="role-btn" type="button" data-role="lead">Team Leader (Food)</button>
-        <button class="role-btn" type="button" data-role="volunteer">Volunteer (Worker)</button>
+    <div class="popover profile-popover" id="profile-popover" role="dialog" aria-modal="false" aria-labelledby="profile-popover-title" hidden>
+      <div class="popover-head">
+        <div class="popover-title-wrap">
+          <h2 id="profile-popover-title">Session &amp; Access</h2>
+          <span class="popover-status-badge"><span class="live-dot" aria-hidden="true"></span> Active</span>
+        </div>
+        <button class="icon-btn" id="btn-profile-close" type="button" aria-label="Close session panel">✕</button>
       </div>
-      <p class="section-label">Event access</p>
-      <p class="mono-muted">EVENT PIN <strong id="nav-code-display">482910</strong> <button class="btn-light btn-small" id="btn-copy-code" type="button">Copy</button></p>
-      <div class="popover-actions">
-        <button class="btn-light btn-small" id="btn-side-back-gateway" type="button">← Change / Find Event</button>
+
+      <!-- Section 1: Active User Profile -->
+      <div class="popover-section">
+        <p class="section-label">Signed in as</p>
+        <div class="popover-user-card">
+          <span class="avatar popover-avatar" id="popover-user-avatar" aria-hidden="true">SJ</span>
+          <div class="popover-user-details">
+            <div class="popover-user-header">
+              <strong class="popover-user-name" id="popover-user-name">Sarah Jenkins</strong>
+              <span class="role-tag role-manager" id="popover-user-role-badge">MANAGER</span>
+            </div>
+            <p class="popover-user-dept" id="popover-user-dept">Executive Committee</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Section 2: Current Event & Access PIN -->
+      <div class="popover-section">
+        <p class="section-label">Current Event</p>
+        <div class="popover-event-card">
+          <div class="popover-event-head">
+            <span class="popover-event-icon" aria-hidden="true">🎪</span>
+            <div class="popover-event-info">
+              <strong class="popover-event-name" id="popover-event-title">Kraft Night 2026</strong>
+              <span class="popover-event-status">Live Workspace</span>
+            </div>
+          </div>
+          <div class="popover-pin-box">
+            <div class="popover-pin-meta">
+              <span class="popover-pin-label">EVENT PIN</span>
+              <strong class="popover-pin-number" id="nav-code-display">482910</strong>
+            </div>
+            <button class="btn-light btn-small btn-copy-pin" id="btn-copy-code" type="button" aria-label="Copy event PIN">
+              <span id="btn-copy-label">Copy</span>
+            </button>
+          </div>
+          <p class="popover-helper-text">Share this 6-digit PIN with team members to let them join this event lobby.</p>
+          <button class="btn-light btn-small popover-change-btn" id="btn-side-back-gateway" type="button">← Change / Find Event</button>
+        </div>
+      </div>
+
+      <!-- Section 3: Switch Persona (RBAC Preview) -->
+      <div class="popover-section">
+        <div class="popover-section-header-flex">
+          <p class="section-label">Switch Persona</p>
+          <span class="rbac-pill">RBAC Preview</span>
+        </div>
+        <p class="popover-helper-text">Preview interface permissions under different organizational roles:</p>
+        <div class="role-list" role="group" aria-label="Switch evaluator role">
+          <button class="role-btn" type="button" data-role="manager">
+            <span class="role-title">Manager</span>
+            <span class="role-desc">Full Admin</span>
+          </button>
+          <button class="role-btn" type="button" data-role="overseer">
+            <span class="role-title">VIP Overseer</span>
+            <span class="role-desc">Read-Only</span>
+          </button>
+          <button class="role-btn" type="button" data-role="lead">
+            <span class="role-title">Team Leader</span>
+            <span class="role-desc">Food Lead</span>
+          </button>
+          <button class="role-btn" type="button" data-role="volunteer">
+            <span class="role-title">Volunteer</span>
+            <span class="role-desc">Worker</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Footer Action: Logout Button -->
+      <div class="popover-footer">
+        <button class="btn-logout" id="btn-logout" type="button">
+          <span class="logout-icon" aria-hidden="true">⎋</span>
+          <span>Log out</span>
+        </button>
       </div>
     </div>
 
