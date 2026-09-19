@@ -115,7 +115,36 @@ async function run() {
     const aboutOk = aboutText.includes("Operational groups") && aboutText.includes("Organizers");
     allPass = report("about page renders groups and organizers", aboutOk) && allPass;
 
-    // 7. REGRESSION: deleting the probe removes exactly that entry (seeds untouched).
+    // 7. FEATURE VERIFICATION: edit programme modal updates all fields and syncs.
+    s.app.switchView("create-program");
+    await sleep(400);
+    s = await waitForApp();
+    const editBtn = s.qa("#programs-list .program-card").map((card) => ({
+      card,
+      btn: card.querySelector("[data-edit]"),
+    })).find((x) => x.card.textContent.includes(probe) && x.btn);
+    if (editBtn) editBtn.btn.click();
+    await sleep(200);
+    const modalVisible = s.doc.getElementById("edit-program-modal") && !s.doc.getElementById("edit-program-modal").hidden;
+    const titleVal = s.doc.getElementById("edit-prog-title").value;
+    const prefillOk = modalVisible && titleVal === probe;
+
+    const editedProbe = `${probe} - Edited`;
+    s.doc.getElementById("edit-prog-title").value = editedProbe;
+    s.doc.getElementById("edit-prog-venue").value = "Updated Venue 42";
+    s.doc.getElementById("edit-prog-desc").value = "Updated Description Details";
+    s.doc.getElementById("form-edit-program").dispatchEvent(new s.win.Event("submit", { bubbles: true, cancelable: true }));
+    await sleep(300);
+
+    const editSavedInCreate = s.doc.getElementById("programs-list").textContent.includes(editedProbe)
+      && s.doc.getElementById("programs-list").textContent.includes("Updated Venue 42");
+    allPass = report("edit modal pre-fills and updates programme fields", prefillOk && editSavedInCreate) && allPass;
+
+    s.app.switchView("dashboard");
+    const editSavedInDash = s.doc.getElementById("timeline-list").textContent.includes(editedProbe);
+    allPass = report("edited programme appears on Dashboard timeline", editSavedInDash) && allPass;
+
+    // 8. REGRESSION: deleting the probe removes exactly that entry (seeds untouched).
     s.app.switchView("create-program");
     await sleep(400);
     s = await waitForApp();
@@ -123,7 +152,7 @@ async function run() {
     const delBtn = s.qa("#programs-list .program-card").map((card) => ({
       card,
       btn: card.querySelector("[data-delete]"),
-    })).find((x) => x.card.textContent.includes(probe) && x.btn);
+    })).find((x) => x.card.textContent.includes(editedProbe) && x.btn);
     s.win.confirm = () => true;
     if (delBtn) delBtn.btn.click();
     // Poll: the delete path is sync, but re-query live state until settled.
@@ -134,11 +163,11 @@ async function run() {
       s = await waitForApp();
       listText = s.doc.getElementById("programs-list").textContent;
       countAfter = s.qa("#programs-list .program-card").length;
-      if (!listText.includes(probe)) break;
+      if (!listText.includes(editedProbe)) break;
     }
     const seedsIntact = ["Inauguration", "Cultural Night", "Grand Banquet", "Awards"]
       .every((t) => listText.includes(t));
-    allPass = report("delete removes exactly the created probe", !!delBtn && !listText.includes(probe) && countAfter === countBefore - 1 && seedsIntact, `found=${!!delBtn} ${countBefore} -> ${countAfter}`) && allPass;
+    allPass = report("delete removes exactly the created probe", !!delBtn && !listText.includes(editedProbe) && countAfter === countBefore - 1 && seedsIntact, `found=${!!delBtn} ${countBefore} -> ${countAfter}`) && allPass;
 
     // 8. REGRESSION: executive briefing appends instead of crashing.
     s.app.switchView("dashboard");
