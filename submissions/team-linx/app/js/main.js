@@ -225,6 +225,7 @@ class AppController {
       if (e.key === "Escape") {
         this.closeDrawers();
         this.closePopover();
+        this.closeEditProgramModal();
       }
     });
   }
@@ -577,6 +578,55 @@ class AppController {
       });
     }
 
+    const editProgramForm = document.getElementById("form-edit-program");
+    if (editProgramForm) {
+      editProgramForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const progId = document.getElementById("edit-prog-id")?.value;
+        const title = document.getElementById("edit-prog-title")?.value.trim() || "";
+        const venue = document.getElementById("edit-prog-venue")?.value.trim() || "";
+        const start = document.getElementById("edit-prog-start")?.value.trim() || "";
+        const end = document.getElementById("edit-prog-end")?.value.trim() || "";
+        const desc = document.getElementById("edit-prog-desc")?.value.trim() || "";
+        const status = document.getElementById("edit-prog-status")?.value || "scheduled";
+
+        if (!title) {
+          alert("Program name is required.");
+          return;
+        }
+
+        const updated = taskManager.updateProgramme(progId, {
+          title,
+          venue,
+          startTime: start,
+          endTime: end,
+          description: desc,
+          status,
+        });
+
+        if (updated) {
+          this.closeEditProgramModal();
+        }
+      });
+    }
+
+    const closeEditBtn = document.getElementById("btn-edit-program-close");
+    if (closeEditBtn) {
+      closeEditBtn.addEventListener("click", () => this.closeEditProgramModal());
+    }
+
+    const cancelEditBtn = document.getElementById("btn-edit-program-cancel");
+    if (cancelEditBtn) {
+      cancelEditBtn.addEventListener("click", () => this.closeEditProgramModal());
+    }
+
+    const editModalBackdrop = document.getElementById("edit-program-modal");
+    if (editModalBackdrop) {
+      editModalBackdrop.addEventListener("click", (e) => {
+        if (e.target === editModalBackdrop) this.closeEditProgramModal();
+      });
+    }
+
     const groupForm = document.getElementById("form-create-group-inline");
     if (groupForm) {
       groupForm.addEventListener("submit", (e) => {
@@ -886,12 +936,14 @@ class AppController {
           <div class="program-sub"><span>${esc(prog.startTime || "")}</span><span>·</span><span>${esc(prog.endTime || "")}</span><span>·</span><span>${esc(prog.venue || "")}</span></div>
         </div>
         <div class="program-actions">
-          ${canCreate ? `<button type="button" class="pill ${pill.cls}" data-cycle="${esc(prog.id)}" title="Cycle status">${esc(pill.label)}</button><button type="button" class="remove-btn" data-delete="${esc(prog.id)}">Delete</button>`
+          ${canCreate ? `<button type="button" class="pill ${pill.cls}" data-cycle="${esc(prog.id)}" title="Cycle status">${esc(pill.label)}</button><button type="button" class="edit-btn" data-edit="${esc(prog.id)}">Edit</button><button type="button" class="remove-btn" data-delete="${esc(prog.id)}">Delete</button>`
             : `<span class="pill ${pill.cls}">${esc(pill.label)}</span>`}
         </div>
       `;
       const cycle = row.querySelector("[data-cycle]");
       if (cycle) cycle.addEventListener("click", () => taskManager.cycleProgrammeStatus(prog.id));
+      const edit = row.querySelector("[data-edit]");
+      if (edit) edit.addEventListener("click", () => this.openEditProgramModal(prog.id));
       const del = row.querySelector("[data-delete]");
       if (del) del.addEventListener("click", () => {
         // Native confirm is system-sized on mobile and keeps ui-smoke hook
@@ -910,6 +962,51 @@ class AppController {
       });
       list.appendChild(row);
     });
+  }
+
+  openEditProgramModal(progId) {
+    if (!auth.canEditProgramme()) {
+      alert("Permission Denied: Only the Event Manager can edit scheduled programmes.");
+      return;
+    }
+    const programmes = taskManager.getProgrammes();
+    const prog = programmes.find((p) => p.id === progId);
+    if (!prog) return;
+
+    const modal = document.getElementById("edit-program-modal");
+    const idInput = document.getElementById("edit-prog-id");
+    const titleInput = document.getElementById("edit-prog-title");
+    const venueInput = document.getElementById("edit-prog-venue");
+    const startInput = document.getElementById("edit-prog-start");
+    const endInput = document.getElementById("edit-prog-end");
+    const descInput = document.getElementById("edit-prog-desc");
+    const statusSelect = document.getElementById("edit-prog-status");
+
+    if (idInput) idInput.value = prog.id;
+    if (titleInput) titleInput.value = prog.title || "";
+    if (venueInput) venueInput.value = prog.venue || "";
+    if (startInput) startInput.value = prog.startTime || "";
+    if (endInput) endInput.value = prog.endTime || "";
+    if (descInput) descInput.value = prog.description || "";
+    if (statusSelect) statusSelect.value = prog.status || "scheduled";
+
+    if (modal) {
+      modal.hidden = false;
+      document.body.classList.add("lock-scroll");
+      setTimeout(() => {
+        if (titleInput) titleInput.focus();
+      }, 50);
+    }
+  }
+
+  closeEditProgramModal() {
+    const modal = document.getElementById("edit-program-modal");
+    if (modal) {
+      modal.hidden = true;
+      document.body.classList.remove("lock-scroll");
+    }
+    const form = document.getElementById("form-edit-program");
+    if (form) form.reset();
   }
 
   // ------------------------------------------------------------------- groups
