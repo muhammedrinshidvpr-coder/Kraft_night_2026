@@ -3,209 +3,331 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sangam (സംഗമം) — Event Command Center | Team LINX</title>
+  <title>Sangam — Event Command Center | Team LINX</title>
+  <meta name="description" content="Sangam event command center: schedule programmes, assign roles, coordinate groups, chat and brief with AI.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23db2777'/%3E%3Ctext x='32' y='44' font-family='sans-serif' font-size='36' font-weight='bold' fill='white' text-anchor='middle'%3ES%3C/text%3E%3C/svg%3E">
   <link rel="stylesheet" href="style.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 </head>
 <body>
+  <a class="skip-link" href="#workspace-content">Skip to workspace content</a>
 
-  <!-- Top Navigation Bar -->
-  <header class="navbar">
-    <div class="brand-section">
-      <div class="brand-logo">സ</div>
-      <div class="brand-text">
-        <h1>SANGAM <span class="team-badge">Team LINX</span></h1>
-        <div class="sub">Kraft Night 2026 • Unified Event Command Center</div>
-      </div>
-    </div>
-
-    <!-- Evaluator Role Switcher Presets -->
-    <div class="role-picker">
-      <button class="role-btn active" data-role="admin">Admin / Organizer</button>
-      <button class="role-btn" data-role="lead">Department Lead</button>
-      <button class="role-btn" data-role="volunteer">Volunteer</button>
-    </div>
-
-    <div class="nav-actions">
-      <button class="btn-action" id="btn-invite-member">
-        <span>✉️</span> Invite Member (SendGrid)
-      </button>
-      <button class="btn-action btn-primary" id="btn-ai-briefing">
-        <span>✨</span> AI Briefing (Gemini)
-      </button>
-
-      <!-- Active User Display -->
-      <div style="display: flex; align-items: center; gap: 10px; margin-left: 10px;">
-        <img id="user-avatar" src="https://api.dicebear.com/7.x/bottts/svg?seed=Aravind" width="34" height="34" style="border-radius: 50%; border: 1px solid var(--border-focus);" alt="Avatar">
-        <div style="font-size: 12px; line-height: 1.2;">
-          <div id="user-name-display" style="font-weight: 700;">Aravind Menon</div>
-          <div id="user-role-badge" style="color: var(--accent-cyan); font-size: 10px; font-weight: 600;">ADMIN</div>
+  <!-- Entry view: landing -->
+  <section class="view-container" id="view-landing" aria-labelledby="landing-title">
+    <div class="entry-wrap">
+      <div class="entry-card landing-hero-card">
+        <p class="eyebrow" id="landing-event-eyebrow">Kraft Night 2026 • Real-Time Command System</p>
+        <h1 class="entry-title" id="landing-title">Unified Event Command &amp; Coordination</h1>
+        <p class="entry-sub">Schedule programs, orchestrate departmental teams, and collaborate in real time with the embedded AI coordinator.</p>
+        <div class="entry-actions">
+          <button class="btn-primary-lg" id="hero-get-started-btn" type="button">Get Started</button>
+          <button class="btn-secondary-lg" id="hero-demo-login-btn" type="button">Direct Demo Login</button>
+        </div>
+        <div class="entry-grid">
+          <div class="mini-card"><strong>6-Digit PIN Join</strong><span>Volunteers and VIPs enter instantly with zero friction.</span></div>
+          <div class="mini-card"><strong>Strict RBAC Roles</strong><span>Manager control, read-only overseer, scoped leads and volunteers.</span></div>
+          <div class="mini-card"><strong>In-App Team Messaging</strong><span>Dedicated channels for every operational group.</span></div>
+          <div class="mini-card"><strong>AI Intelligence</strong><span>Schedule briefings, clash checks and announcements.</span></div>
         </div>
       </div>
     </div>
-  </header>
+  </section>
 
-  <!-- App Main Body -->
-  <div class="app-container">
-
-    <!-- Left Sidebar: Departments -->
-    <aside class="sidebar">
-      <div class="sidebar-title">Departments</div>
-      <ul class="dept-list" id="dept-list">
-        <!-- Injected dynamically via main.js -->
-      </ul>
-
-      <div style="margin-top: auto; padding: 14px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); font-size: 11px; color: var(--text-dim); line-height: 1.5;">
-        <strong style="color: var(--text-main);">Wireframe Template Ready</strong><br>
-        Built with pure HTML5, CSS3, Vanilla JS, Supabase, Google AI SDK & SendGrid.
+  <!-- Entry view: event gateway -->
+  <section class="view-container" id="view-gateway" aria-labelledby="gateway-title" hidden>
+    <div class="entry-wrap">
+      <div class="gateway-head">
+        <h1 class="page-title" id="gateway-title">Event Collaboration Gateway</h1>
+        <p class="page-sub">Choose an action to proceed into the command workspace.</p>
       </div>
-    </aside>
-
-    <!-- Main Command Center Canvas -->
-    <main class="canvas">
-
-      <!-- Event Stat Metrics -->
-      <div class="stats-grid">
-        <div class="stat-card">
-          <div class="label">Total Tasks</div>
-          <div class="value" id="stat-total">0</div>
+      <div class="gateway-grid">
+        <div class="card">
+          <p class="section-label">Create an event</p>
+          <h2 class="card-title">Create an Event</h2>
+          <p class="card-sub">Assign an event title. You become the <strong>Event Manager</strong> with control over programs, roles and teams.</p>
+          <form id="create-event-form" class="stack-form">
+            <div class="field">
+              <label for="input-event-title">Event title</label>
+              <input type="text" id="input-event-title" required placeholder="e.g. Kraft Night 2026" value="Kraft Night 2026" autocomplete="off">
+            </div>
+            <button type="submit" class="btn-dark">Create Event &amp; Become Manager</button>
+          </form>
         </div>
-        <div class="stat-card">
-          <div class="label">In Progress</div>
-          <div class="value" style="color: var(--accent-cyan);" id="stat-in-progress">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Critical Delay Alerts</div>
-          <div class="value" style="color: var(--accent-rose);" id="stat-critical">0</div>
-        </div>
-        <div class="stat-card">
-          <div class="label">Event Progress Rate</div>
-          <div class="value" style="color: var(--accent-emerald);" id="stat-rate">0%</div>
+        <div class="card">
+          <p class="section-label">Find an event</p>
+          <h2 class="card-title">Find an Event</h2>
+          <p class="card-sub">Enter the 6-digit access code provided by your event organizer to join the active lobby.</p>
+          <form id="find-event-form" class="stack-form">
+            <div class="field">
+              <label id="pin-label">6-digit event code</label>
+              <div class="pin-row" id="pin-input-group" role="group" aria-labelledby="pin-label">
+                <input type="text" maxlength="1" class="pin-digit" value="4" aria-label="Digit 1" inputmode="numeric">
+                <input type="text" maxlength="1" class="pin-digit" value="8" aria-label="Digit 2" inputmode="numeric">
+                <input type="text" maxlength="1" class="pin-digit" value="2" aria-label="Digit 3" inputmode="numeric">
+                <input type="text" maxlength="1" class="pin-digit" value="9" aria-label="Digit 4" inputmode="numeric">
+                <input type="text" maxlength="1" class="pin-digit" value="1" aria-label="Digit 5" inputmode="numeric">
+                <input type="text" maxlength="1" class="pin-digit" value="0" aria-label="Digit 6" inputmode="numeric">
+              </div>
+            </div>
+            <button type="submit" class="btn-dark">Join Event Lobby</button>
+          </form>
         </div>
       </div>
+    </div>
+  </section>
 
-      <!-- Sangam AI Natural-Language-to-Task Input Bar -->
-      <div class="ai-bar-card">
-        <div class="ai-icon-badge">✨</div>
-        <input 
-          type="text" 
-          id="ai-prompt-input" 
-          class="ai-input" 
-          placeholder="Sangam AI: Type instructions (e.g. 'Arrange 4 cordless mics and sound check for Stage 1 by 4 PM')..."
-        >
-        <button class="btn-action btn-primary" id="ai-prompt-btn">✨ Convert to Task</button>
-      </div>
+  <!-- Authenticated workspace -->
+  <section class="view-container" id="view-workspace" aria-labelledby="workspace-page-title" hidden>
+    <div class="workspace">
+      <div class="workspace-backdrop" id="workspace-backdrop" hidden></div>
 
-      <!-- Active Board Header -->
-      <div style="display: flex; justify-content: space-between; align-items: center;">
-        <h2 id="active-dept-title" style="font-size: 16px; font-weight: 700; color: #a5b4fc;">Global Event Board</h2>
-        <span style="font-size: 12px; color: var(--text-dim);">Click any card to cycle status: To Do → In Progress → Review → Completed</span>
-      </div>
-
-      <!-- Real-Time Kanban Board -->
-      <div class="kanban-board">
-        <div class="kanban-col">
-          <div class="col-header">
-            <h3>To Do</h3>
+      <aside class="sidebar" id="sidebar" aria-label="Workspace navigation">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">S</div>
+          <div class="brand-text">
+            <p class="brand-name">SANGAM</p>
+            <p class="brand-sub">EVENT MANAGEMENT</p>
           </div>
-          <div class="task-list" id="col-todo"></div>
+          <button class="icon-btn sidebar-close" id="btn-close-nav" type="button" aria-label="Close navigation">✕</button>
         </div>
 
-        <div class="kanban-col">
-          <div class="col-header">
-            <h3>In Progress</h3>
+        <div class="sidebar-event">
+          <p class="sidebar-event-title" id="side-event-title">Kraft Night 2026</p>
+          <p class="sidebar-event-sub" id="side-event-code">PIN: 482910</p>
+        </div>
+
+        <nav class="sidebar-nav" aria-label="Workspace pages">
+          <button class="nav-item" id="btn-side-dashboard" type="button" data-workspace-page="dashboard" aria-current="page"><span aria-hidden="true">◉</span> Dashboard</button>
+          <button class="nav-item" id="btn-side-assign" type="button" data-workspace-page="assign-roles"><span aria-hidden="true">◈</span> Assign Roles</button>
+          <button class="nav-item" id="btn-side-create-program" type="button" data-workspace-page="create-program"><span aria-hidden="true">⊕</span> Create Program</button>
+          <button class="nav-item" id="btn-side-groups" type="button" data-workspace-page="groups"><span aria-hidden="true">◫</span> Groups</button>
+          <button class="nav-item" id="btn-side-about" type="button" data-workspace-page="about-event"><span aria-hidden="true">◎</span> About Event</button>
+        </nav>
+
+        <div class="sidebar-footer">
+          <button class="profile-btn" id="profile-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="profile-popover">
+            <span class="avatar" id="user-avatar-initials" aria-hidden="true">SJ</span>
+            <span class="profile-text">
+              <span class="profile-name" id="user-name-display">Sarah Jenkins</span>
+              <span class="profile-sub" id="user-dept-display">Executive Committee</span>
+            </span>
+            <span class="role-tag role-manager" id="user-role-badge">MANAGER</span>
+          </button>
+        </div>
+      </aside>
+
+      <div class="workspace-main">
+        <header class="workspace-header">
+          <button class="icon-btn only-mobile" id="btn-open-nav" type="button" aria-label="Open navigation" aria-controls="sidebar" aria-expanded="false">☰</button>
+          <h1 class="workspace-title" id="workspace-page-title">Dashboard</h1>
+          <div class="header-meta">
+            <span class="mono-muted" id="header-datetime">Sep 19, 2026 · 10:23 AM</span>
+            <span class="live-badge" id="header-live-badge"><span class="live-dot" aria-hidden="true"></span> Live now</span>
+            <button class="icon-btn only-tablet-down" id="btn-open-ai" type="button" aria-label="Open AI briefing" aria-controls="ai-rail" aria-expanded="false">✦</button>
           </div>
-          <div class="task-list" id="col-in_progress"></div>
-        </div>
+        </header>
 
-        <div class="kanban-col">
-          <div class="col-header">
-            <h3>Under Review</h3>
+        <main class="workspace-content" id="workspace-content" tabindex="-1">
+          <!-- Dashboard -->
+          <div class="workspace-page" id="page-dashboard" role="region" aria-label="Dashboard">
+            <div class="dashboard-grid">
+              <section class="card timeline-panel" aria-labelledby="dashboard-schedule-title">
+                <div class="card-head">
+                  <div>
+                    <h2 class="card-title" id="dashboard-schedule-title">Today's Schedule</h2>
+                    <p class="card-sub" id="dashboard-schedule-sub">Kraft Night 2026 · Live programme timeline</p>
+                  </div>
+                  <span class="live-badge" id="dashboard-live-badge"><span class="live-dot" aria-hidden="true"></span> Live now</span>
+                </div>
+                <div class="timeline-list" id="timeline-list" role="list"></div>
+              </section>
+              <div class="dashboard-side">
+                <section class="card" aria-labelledby="assigned-roles-title">
+                  <p class="section-label">Assigned roles</p>
+                  <h2 class="card-title" id="assigned-program-name">Select a programme</h2>
+                  <div class="assigned-list" id="assigned-roles-list"></div>
+                </section>
+                <section class="card" aria-labelledby="snapshot-title">
+                  <p class="section-label" id="snapshot-title">Event snapshot</p>
+                  <div class="snapshot-grid">
+                    <div class="snapshot-cell"><p class="snapshot-value accent" id="stat-total-prog">0</p><p class="snapshot-label">Programs</p></div>
+                    <div class="snapshot-cell"><p class="snapshot-value" id="stat-completed-prog">0</p><p class="snapshot-label">Completed</p></div>
+                    <div class="snapshot-cell"><p class="snapshot-value" id="stat-teams-count">0</p><p class="snapshot-label">Teams</p></div>
+                    <div class="snapshot-cell"><p class="snapshot-value accent" id="stat-hackers-count">0</p><p class="snapshot-label">Members</p></div>
+                  </div>
+                  <div class="snapshot-extra">
+                    <span class="mono-muted" id="stat-in-progress-prog-wrap">In progress: <strong id="stat-in-progress-prog">0</strong></span>
+                    <span class="mono-muted">Delayed: <strong id="stat-delayed-prog">0</strong></span>
+                    <span class="mono-muted">Done: <strong id="stat-completion-rate">0%</strong></span>
+                  </div>
+                </section>
+              </div>
+            </div>
           </div>
-          <div class="task-list" id="col-review"></div>
-        </div>
 
-        <div class="kanban-col">
-          <div class="col-header">
-            <h3>Completed</h3>
+          <!-- Assign roles -->
+          <div class="workspace-page" id="page-assign-roles" role="region" aria-label="Assign roles" hidden>
+            <h2 class="page-title">Assign Roles</h2>
+            <p class="page-sub">Manage coordinator and volunteer assignments for the active event.</p>
+            <section class="card narrow" aria-labelledby="assign-form-title">
+              <p class="section-label" id="assign-form-title">Add / update member</p>
+              <form id="form-assign-inline" class="stack-form">
+                <div class="form-grid-2">
+                  <div class="field">
+                    <label for="assign-new-name">Full name <span class="muted">(new member)</span></label>
+                    <input type="text" id="assign-new-name" placeholder="e.g. Alex Johnson" autocomplete="off">
+                  </div>
+                  <div class="field">
+                    <label for="assign-member-select">Existing member</label>
+                    <select id="assign-member-select"></select>
+                  </div>
+                </div>
+                <div class="field">
+                  <label for="assign-role-select-inline">Role</label>
+                  <select id="assign-role-select-inline">
+                    <option value="volunteer">Worker / Volunteer</option>
+                    <option value="lead">Team Leader (Group Organiser)</option>
+                    <option value="overseer">VIP / Overseer (Read-Only Principal)</option>
+                    <option value="manager">Event Manager (Full Admin)</option>
+                  </select>
+                </div>
+                <div class="field">
+                  <label for="assign-group-select-inline">Operational group</label>
+                  <select id="assign-group-select-inline"></select>
+                </div>
+                <p class="form-hint" id="assign-form-hint">Only the Event Manager can assign roles and groups.</p>
+                <button type="submit" class="btn-dark" id="assign-submit-btn">Add Member</button>
+              </form>
+            </section>
+            <div class="roster-list" id="joined-people-list" role="list" aria-label="Joined people roster"></div>
           </div>
-          <div class="task-list" id="col-completed"></div>
-        </div>
+
+          <!-- Create program -->
+          <div class="workspace-page" id="page-create-program" role="region" aria-label="Create program" hidden>
+            <h2 class="page-title">Create Program</h2>
+            <p class="page-sub">Add programs to the active event schedule.</p>
+            <section class="card narrow" aria-labelledby="new-program-title">
+              <p class="section-label" id="new-program-title">New program</p>
+              <form id="form-create-program-inline" class="stack-form">
+                <div class="form-grid-2">
+                  <div class="field"><label for="prog-title-inline">Program name</label><input type="text" id="prog-title-inline" required placeholder="e.g. Opening Keynote" autocomplete="off"></div>
+                  <div class="field"><label for="prog-venue-inline">Location</label><input type="text" id="prog-venue-inline" placeholder="e.g. Main Hall" autocomplete="off"></div>
+                  <div class="field"><label for="prog-start-inline">Start time</label><input type="text" id="prog-start-inline" placeholder="e.g. 09:00 AM" autocomplete="off"></div>
+                  <div class="field"><label for="prog-end-inline">End time</label><input type="text" id="prog-end-inline" placeholder="e.g. 10:00 AM" autocomplete="off"></div>
+                </div>
+                <div class="field"><label for="prog-desc-inline">Description</label><textarea id="prog-desc-inline" rows="2" placeholder="Brief outline of the programme"></textarea></div>
+                <p class="form-hint" id="program-form-hint">Only the Event Manager can schedule programs.</p>
+                <button type="submit" class="btn-dark">Add to Schedule</button>
+              </form>
+            </section>
+            <div class="program-list" id="programs-list" role="list" aria-label="Scheduled programmes"></div>
+          </div>
+
+          <!-- Groups -->
+          <div class="workspace-page" id="page-groups" role="region" aria-label="Groups" hidden>
+            <div class="groups-grid">
+              <div class="groups-directory">
+                <h2 class="page-title">Groups</h2>
+                <p class="page-sub" id="groups-count">0 teams registered</p>
+                <div class="groups-list" id="channels-list" role="list" aria-label="Operational groups"></div>
+                <section class="card" aria-labelledby="new-team-title">
+                  <p class="section-label" id="new-team-title">New team</p>
+                  <form id="form-create-group-inline" class="stack-form">
+                    <div class="field"><label for="group-name-inline">Team name</label><input type="text" id="group-name-inline" required placeholder="e.g. Media Team" autocomplete="off"></div>
+                    <div class="form-grid-2">
+                      <div class="field"><label for="group-icon-inline">Icon emoji</label><input type="text" id="group-icon-inline" placeholder="📸" value="📸" autocomplete="off"></div>
+                      <div class="field"><label for="group-leader-inline">Group leader</label><input type="text" id="group-leader-inline" placeholder="e.g. Fathima S." autocomplete="off"></div>
+                    </div>
+                    <div class="field"><label for="group-desc-inline">Description</label><textarea id="group-desc-inline" rows="2" placeholder="Responsibilities and scope"></textarea></div>
+                    <p class="form-hint" id="group-form-hint">Only the Event Manager can create operational groups.</p>
+                    <button type="submit" class="btn-dark btn-small">Register Team</button>
+                  </form>
+                </section>
+              </div>
+              <section class="card chat-card" aria-labelledby="chat-active-group-name">
+                <div class="chat-head">
+                  <div><h2 class="card-title" id="chat-active-group-name">Select a group</h2><p class="card-sub" id="chat-active-group-meta">Choose a channel to view messages</p></div>
+                  <div class="chat-avatars" id="chat-header-avatars" aria-hidden="true"></div>
+                </div>
+                <div class="chat-messages" id="chat-bubbles-scroll" role="log" aria-live="polite" aria-label="Group messages"></div>
+                <p class="read-only-banner" id="chat-read-only-banner" hidden></p>
+                <form id="chat-send-form" class="chat-form">
+                  <label class="visually-hidden" for="chat-text-input">Message active group</label>
+                  <input type="text" id="chat-text-input" placeholder="Message team…" autocomplete="off">
+                  <button type="submit" class="btn-dark btn-small" id="chat-submit-btn">Send ↑</button>
+                </form>
+              </section>
+            </div>
+          </div>
+
+          <!-- About -->
+          <div class="workspace-page" id="page-about-event" role="region" aria-label="About event" hidden>
+            <h2 class="page-title">About Event</h2>
+            <p class="page-sub">Active event details and operational information.</p>
+            <section class="card narrow about-hero" aria-labelledby="about-event-title">
+              <h2 class="about-title" id="about-event-title">Kraft Night 2026</h2>
+              <p class="card-sub" id="about-event-sub">Unified event command center</p>
+              <dl class="about-grid">
+                <div><dt>Event</dt><dd id="about-field-title">Kraft Night 2026</dd></div>
+                <div><dt>Venue</dt><dd id="about-field-venue">Main Campus &amp; Auditorium</dd></div>
+                <div><dt>Access PIN</dt><dd id="about-field-pin">482910</dd></div>
+                <div><dt>Status</dt><dd id="about-field-status">active</dd></div>
+                <div><dt>Programs</dt><dd id="about-field-programs">0 scheduled</dd></div>
+                <div><dt>Members</dt><dd id="about-field-members">0 joined</dd></div>
+              </dl>
+            </section>
+            <section class="card narrow" aria-labelledby="about-groups-title">
+              <p class="section-label" id="about-groups-title">Operational groups</p>
+              <div class="pill-row" id="about-groups-list"></div>
+            </section>
+            <section class="card narrow" aria-labelledby="about-org-title">
+              <p class="section-label" id="about-org-title">Organizers and leads</p>
+              <div class="org-list" id="about-organizers-list"></div>
+            </section>
+          </div>
+        </main>
       </div>
-    </main>
 
-    <!-- Right Panel: Live Department Chat -->
-    <section class="right-panel">
-      <div class="panel-tabs">
-        <button class="panel-tab active">Department Chat</button>
-      </div>
-
-      <div class="chat-container">
-        <div class="chat-messages" id="chat-messages">
-          <!-- Injected dynamically via chat.js -->
+      <aside class="ai-rail" id="ai-rail" aria-label="AI briefing">
+        <div class="ai-head">
+          <div class="ai-brand"><span class="ai-mark" aria-hidden="true">✦</span><div><p class="ai-title">AI Briefing</p><p class="ai-online">● Online</p></div></div>
+          <button class="icon-btn only-tablet-down" id="btn-close-ai" type="button" aria-label="Close AI briefing">✕</button>
         </div>
-
-        <div class="chat-input-box">
-          <input type="text" id="chat-input" placeholder="Type message to department...">
-          <button class="btn-action btn-primary" id="chat-send-btn">Send</button>
+        <div class="ai-messages" id="gemini-thread" role="log" aria-live="polite" aria-label="AI conversation"></div>
+        <div class="ai-chips" aria-label="Quick prompts">
+          <button class="chip" type="button" data-prompt="Summarize recent updates in Food Coordination">Schedule</button>
+          <button class="chip" type="button" data-prompt="List the operational teams and leaders">Teams</button>
+          <button class="chip" type="button" data-prompt="Who are the event roles and leaders?">Roles</button>
+          <button class="chip" type="button" data-prompt="Give me an executive status briefing">Status</button>
         </div>
-      </div>
-    </section>
-
-  </div>
-
-  <!-- SendGrid Invitation Modal -->
-  <div class="modal-backdrop" id="invite-modal">
-    <div class="modal-card">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h3 style="font-size: 16px; font-weight: 700;">Invite Team Member (SendGrid)</h3>
-        <button id="invite-close" style="background: transparent; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer;">✕</button>
-      </div>
-      <form id="invite-form" style="display: flex; flex-direction: column; gap: 14px;">
-        <div>
-          <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">Full Name</label>
-          <input type="text" id="invite-name" required placeholder="e.g. Arjun Dev" style="width: 100%; padding: 10px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: white;">
-        </div>
-        <div>
-          <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">Email Address</label>
-          <input type="email" id="invite-email" required placeholder="name@domain.com" style="width: 100%; padding: 10px; background: rgba(15, 23, 42, 0.6); border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: white;">
-        </div>
-        <div>
-          <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">Department</label>
-          <select id="invite-dept" style="width: 100%; padding: 10px; background: #0f172a; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: white;">
-            <option value="Stage & Sound">Stage & Sound</option>
-            <option value="Logistics & Transport">Logistics & Transport</option>
-            <option value="Hospitality & VIPs">Hospitality & VIPs</option>
-            <option value="Tech & Streaming">Tech & Streaming</option>
-            <option value="Media & PR">Media & PR</option>
-          </select>
-        </div>
-        <div>
-          <label style="display: block; font-size: 12px; color: var(--text-dim); margin-bottom: 6px;">Role</label>
-          <select id="invite-role" style="width: 100%; padding: 10px; background: #0f172a; border: 1px solid var(--border-subtle); border-radius: var(--radius-sm); color: white;">
-            <option value="volunteer">Volunteer</option>
-            <option value="lead">Department Team Lead</option>
-            <option value="admin">Administrator</option>
-          </select>
-        </div>
-        <button type="submit" class="btn-action btn-primary" style="justify-content: center; margin-top: 10px;">Dispatch SendGrid Email Invitation</button>
-      </form>
+        <div class="ai-actions"><button class="btn-light btn-small" id="btn-ai-briefing" type="button">✦ Executive Briefing</button></div>
+        <form id="gemini-input-form" class="ai-form">
+          <label class="visually-hidden" for="gemini-prompt-input">Ask the AI coordinator</label>
+          <input type="text" id="gemini-prompt-input" placeholder="Ask anything…" autocomplete="off">
+          <button type="submit" class="btn-dark btn-small" aria-label="Send AI prompt">↑</button>
+        </form>
+      </aside>
     </div>
-  </div>
 
-  <!-- Google Gemini AI Executive Briefing Modal -->
-  <div class="modal-backdrop" id="briefing-modal">
-    <div class="modal-card" style="width: 600px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-        <h3 style="font-size: 16px; font-weight: 700;">✨ Sangam AI Executive Briefing</h3>
-        <button id="briefing-close" style="background: transparent; border: none; color: var(--text-muted); font-size: 18px; cursor: pointer;">✕</button>
+    <div class="popover" id="profile-popover" role="dialog" aria-modal="false" aria-labelledby="profile-popover-title" hidden>
+      <div class="popover-head"><h2 id="profile-popover-title">Session &amp; access</h2><button class="icon-btn" id="btn-profile-close" type="button" aria-label="Close session panel">✕</button></div>
+      <p class="section-label">Active role</p>
+      <div class="role-list" role="group" aria-label="Switch evaluator role">
+        <button class="role-btn" type="button" data-role="manager">Manager</button>
+        <button class="role-btn" type="button" data-role="overseer">VIP Overseer (Principal)</button>
+        <button class="role-btn" type="button" data-role="lead">Team Leader (Food)</button>
+        <button class="role-btn" type="button" data-role="volunteer">Volunteer (Worker)</button>
       </div>
-      <div id="briefing-content">
-        <!-- Populated dynamically via ai.js -->
+      <p class="section-label">Event access</p>
+      <p class="mono-muted">EVENT PIN <strong id="nav-code-display">482910</strong> <button class="btn-light btn-small" id="btn-copy-code" type="button">Copy</button></p>
+      <div class="popover-actions">
+        <button class="btn-light btn-small" id="btn-side-back-gateway" type="button">← Change / Find Event</button>
       </div>
     </div>
-  </div>
+  </section>
 
-  <!-- App Script (ES6 Module) -->
   <script type="module" src="js/main.js"></script>
 </body>
 </html>

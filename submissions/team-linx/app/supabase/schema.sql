@@ -1,125 +1,173 @@
 -- ==============================================================================
--- SANGAM (സംഗമം / संगम) - Database Schema
--- Platform: Supabase PostgreSQL
--- Team: LINX (Kraft Night 2026)
+-- SANGAM (സംഗമം / संगम) - Production Database Schema
+-- Platform: Supabase PostgreSQL & Realtime WebSockets
+-- Team: LINX (Kraft Night 2026 Hackathon)
 -- ==============================================================================
 
 -- Enable UUID extension
 create extension if not exists "uuid-ossp";
 
--- 1. Profiles Table (Extends Supabase Auth users)
+-- 1. Profiles Table (Supports both Supabase Auth & Persona Evaluator logins)
 create table if not exists public.profiles (
-  id uuid references auth.users on delete cascade primary key,
+  id text primary key,
   full_name text not null,
-  email text not null unique,
-  role text check (role in ('admin', 'lead', 'volunteer')) default 'volunteer',
+  email text,
   avatar_url text,
   phone text,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+  role text default 'volunteer',
+  department text,
+  created_at timestamptz default timezone('utc'::text, now()) not null
 );
 
--- Enable RLS
 alter table public.profiles enable row level security;
-create policy "Allow public read access to profiles" on public.profiles for select using (true);
-create policy "Allow users to update own profile" on public.profiles for update using (auth.uid() = id);
+drop policy if exists "Profiles Public Read" on public.profiles;
+drop policy if exists "Profiles Public Write" on public.profiles;
+create policy "Profiles Public Read" on public.profiles for select using (true);
+create policy "Profiles Public Write" on public.profiles for all using (true) with check (true);
 
--- 2. Events Table
+-- 2. Events Table (With 6-digit Code for instant PIN entry)
 create table if not exists public.events (
-  id uuid default gen_random_uuid() primary key,
+  id text primary key default gen_random_uuid()::text,
   title text not null,
-  tagline text,
-  description text,
-  venue text default 'Main Auditorium',
-  start_date timestamp with time zone not null,
-  end_date timestamp with time zone not null,
-  status text check (status in ('upcoming', 'live', 'completed')) default 'live',
-  created_by uuid references public.profiles(id),
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+  six_digit_code varchar(10) unique not null,
+  venue text default 'Main Campus & Auditorium',
+  status text check (status in ('draft', 'active', 'completed', 'archived')) default 'active',
+  manager_id text,
+  created_at timestamptz default timezone('utc'::text, now()) not null
 );
 
+create index if not exists idx_events_six_digit_code on public.events(six_digit_code);
 alter table public.events enable row level security;
-create policy "Allow public read access to events" on public.events for select using (true);
+drop policy if exists "Events Public Read" on public.events;
+drop policy if exists "Events Public Write" on public.events;
+create policy "Events Public Read" on public.events for select using (true);
+create policy "Events Public Write" on public.events for all using (true) with check (true);
 
--- 3. Departments Table
-create table if not exists public.departments (
-  id uuid default gen_random_uuid() primary key,
-  event_id uuid references public.events(id) on delete cascade not null,
+-- 3. Operational Groups (e.g. Food Coordination, Stage & Sound, VIP Protocol)
+create table if not exists public.event_groups (
+  id text primary key default gen_random_uuid()::text,
+  event_id text references public.events(id) on delete cascade not null,
   name text not null,
-  icon text default '📌',
-  lead_id uuid references public.profiles(id),
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+  description text,
+  icon text default '👥',
+  leader_id text,
+  leader_name text,
+  member_count int default 0,
+  created_at timestamptz default timezone('utc'::text, now()) not null
 );
 
-alter table public.departments enable row level security;
-create policy "Allow public read access to departments" on public.departments for select using (true);
+create index if not exists idx_event_groups_event on public.event_groups(event_id);
+alter table public.event_groups enable row level security;
+drop policy if exists "Event Groups Public Read" on public.event_groups;
+drop policy if exists "Event Groups Public Write" on public.event_groups;
+create policy "Event Groups Public Read" on public.event_groups for select using (true);
+create policy "Event Groups Public Write" on public.event_groups for all using (true) with check (true);
 
--- 4. Event Members (Mapping users to event departments and roles)
+-- 4. Event Members (Mapping attendees to roles: manager, overseer, lead, volunteer)
 create table if not exists public.event_members (
-  id uuid default gen_random_uuid() primary key,
-  event_id uuid references public.events(id) on delete cascade not null,
-  user_id uuid references public.profiles(id) on delete cascade not null,
-  department_id uuid references public.departments(id) on delete set null,
-  role text check (role in ('admin', 'lead', 'volunteer')) not null,
-  joined_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  unique(event_id, user_id)
+  id text primary key default gen_random_uuid()::text,
+  event_id text references public.events(id) on delete cascade not null,
+  user_id text not null,
+  name text not null,
+  email text,
+  role text not null default 'volunteer',
+  role_badge text,
+  assigned_group_id text,
+  group_name text,
+  status text default 'active',
+  joined_at timestamptz default timezone('utc'::text, now()) not null
 );
 
+create index if not exists idx_event_members_event on public.event_members(event_id);
 alter table public.event_members enable row level security;
-create policy "Allow members read access" on public.event_members for select using (true);
+drop policy if exists "Event Members Public Read" on public.event_members;
+drop policy if exists "Event Members Public Write" on public.event_members;
+create policy "Event Members Public Read" on public.event_members for select using (true);
+create policy "Event Members Public Write" on public.event_members for all using (true) with check (true);
 
--- 5. Tasks Table
-create table if not exists public.tasks (
-  id uuid default gen_random_uuid() primary key,
-  event_id uuid references public.events(id) on delete cascade not null,
-  department_id uuid references public.departments(id) on delete cascade not null,
+-- 5. Programmes Table (Schedule Timeline)
+create table if not exists public.programmes (
+  id text primary key default gen_random_uuid()::text,
+  event_id text references public.events(id) on delete cascade not null,
   title text not null,
   description text,
-  status text check (status in ('todo', 'in_progress', 'review', 'completed')) default 'todo',
-  priority text check (priority in ('low', 'medium', 'high', 'critical')) default 'medium',
-  due_date timestamp with time zone,
-  assigned_to uuid references public.profiles(id),
-  created_by uuid references public.profiles(id),
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null,
-  updated_at timestamp with time zone default timezone('utc'::text, now()) not null
+  start_time text not null,
+  end_time text not null,
+  venue text default 'Main Stage',
+  status text check (status in ('scheduled', 'in_progress', 'completed', 'delayed')) default 'scheduled',
+  lead_group text,
+  created_by text,
+  created_at timestamptz default timezone('utc'::text, now()) not null
 );
 
-alter table public.tasks enable row level security;
-create policy "Allow read access to tasks" on public.tasks for select using (true);
-create policy "Allow insert tasks" on public.tasks for insert with check (true);
-create policy "Allow update tasks" on public.tasks for update using (true);
+create index if not exists idx_programmes_event on public.programmes(event_id);
+alter table public.programmes enable row level security;
+drop policy if exists "Programmes Public Read" on public.programmes;
+drop policy if exists "Programmes Public Write" on public.programmes;
+create policy "Programmes Public Read" on public.programmes for select using (true);
+create policy "Programmes Public Write" on public.programmes for all using (true) with check (true);
 
--- Enable Realtime for Tasks
-alter publication supabase_realtime add table public.tasks;
-
--- 6. Department Chat Messages Table
+-- 6. In-App Group Chat Messages Table
 create table if not exists public.chat_messages (
-  id uuid default gen_random_uuid() primary key,
-  department_id uuid references public.departments(id) on delete cascade not null,
-  sender_id uuid references public.profiles(id) on delete cascade not null,
+  id text primary key default gen_random_uuid()::text,
+  group_id text not null,
+  sender_id text not null,
   sender_name text not null,
   sender_role text default 'volunteer',
-  message text not null,
+  message_text text not null,
   attachment_url text,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+  avatar text,
+  time text,
+  created_at timestamptz default timezone('utc'::text, now()) not null
 );
 
+create index if not exists idx_chat_messages_group on public.chat_messages(group_id, created_at);
 alter table public.chat_messages enable row level security;
-create policy "Allow read access to chat messages" on public.chat_messages for select using (true);
-create policy "Allow insert chat messages" on public.chat_messages for insert with check (true);
+drop policy if exists "Chat Messages Public Read" on public.chat_messages;
+drop policy if exists "Chat Messages Public Write" on public.chat_messages;
+create policy "Chat Messages Public Read" on public.chat_messages for select using (true);
+create policy "Chat Messages Public Write" on public.chat_messages for all using (true) with check (true);
 
--- Enable Realtime for Chat
-alter publication supabase_realtime add table public.chat_messages;
-
--- 7. AI Briefings & Risk Logs Table
-create table if not exists public.ai_briefings (
-  id uuid default gen_random_uuid() primary key,
-  event_id uuid references public.events(id) on delete cascade not null,
-  briefing_type text not null, -- 'executive_summary', 'risk_alert', 'nl_task_conversion'
-  summary text not null,
-  risks jsonb default '[]'::jsonb,
-  recommendations jsonb default '[]'::jsonb,
-  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+-- 7. Gemini AI Chat Logs Table
+create table if not exists public.ai_chat_sessions (
+  id text primary key default gen_random_uuid()::text,
+  event_id text,
+  user_id text,
+  prompt text not null,
+  response_text text not null,
+  created_at timestamptz default timezone('utc'::text, now()) not null
 );
 
-alter table public.ai_briefings enable row level security;
-create policy "Allow read access to AI briefings" on public.ai_briefings for select using (true);
+alter table public.ai_chat_sessions enable row level security;
+drop policy if exists "AI Chat Public Read" on public.ai_chat_sessions;
+drop policy if exists "AI Chat Public Write" on public.ai_chat_sessions;
+create policy "AI Chat Public Read" on public.ai_chat_sessions for select using (true);
+create policy "AI Chat Public Write" on public.ai_chat_sessions for all using (true) with check (true);
+
+-- ==============================================================================
+-- Realtime WebSocket Setup (Enables instant multi-client push)
+-- ==============================================================================
+alter table public.chat_messages replica identity full;
+alter table public.programmes replica identity full;
+alter table public.event_members replica identity full;
+alter table public.event_groups replica identity full;
+alter table public.events replica identity full;
+
+do $$
+begin
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'chat_messages') then
+    alter publication supabase_realtime add table public.chat_messages;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'programmes') then
+    alter publication supabase_realtime add table public.programmes;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'event_members') then
+    alter publication supabase_realtime add table public.event_members;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'event_groups') then
+    alter publication supabase_realtime add table public.event_groups;
+  end if;
+  if not exists (select 1 from pg_publication_tables where pubname = 'supabase_realtime' and tablename = 'events') then
+    alter publication supabase_realtime add table public.events;
+  end if;
+end $$;

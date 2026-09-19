@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sangam UI Smoke Tests (no dependencies)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 0; background: #fafaf9; color: #1a1a1a; }
+    header { padding: 16px 20px; background: #fff; border-bottom: 1px solid #e8e8e6; }
+    main { padding: 16px 20px; }
+    #results { list-style: none; padding: 0; }
+    #results li { padding: 8px 12px; border: 1px solid #e8e8e6; border-radius: 10px; margin-bottom: 8px; background: #fff; }
+    .pass { border-left: 6px solid #059669; }
+    .fail { border-left: 6px solid #ef4444; }
+    iframe { width: 100%; height: 520px; border: 1px solid #e8e8e6; border-radius: 12px; background: #fff; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Sangam workspace smoke tests</h1>
+    <p>Dependency-free iframe runner. Open this file through the same static server as <code>index.html</code>.</p>
+    <button id="run" type="button">Run tests</button>
+  </header>
+  <main>
+    <ol id="results" aria-live="polite"></ol>
+    <iframe id="app-frame" title="Sangam app under test" src="../index.html"></iframe>
+  </main>
+  <script src="./ui-smoke.js"></script>
+</body>
+</html>

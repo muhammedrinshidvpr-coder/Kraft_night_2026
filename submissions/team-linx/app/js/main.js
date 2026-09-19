@@ -1,243 +1,1002 @@
-// ==============================================================================
-// SANGAM - Main Application Controller
+// =============================================================================
+// SANGAM - Main Application Controller & Workspace Router (vanilla JS, no frameworks)
 // Team LINX - Kraft Night 2026
-// ==============================================================================
+// =============================================================================
 
+import { getLocalState, saveLocalState } from "./config.js";
 import { auth } from "./auth.js";
 import { taskManager } from "./tasks.js";
 import { chatManager } from "./chat.js";
 import { aiCoordinator } from "./ai.js";
-import { emailService } from "./email.js";
-import { DEPARTMENTS } from "./config.js";
 
-document.addEventListener("DOMContentLoaded", () => {
-  let currentDepartmentFilter = "all";
+const WORKSPACE_PAGES = ["dashboard", "assign-roles", "create-program", "groups", "about-event"];
+const ALL_VIEWS = ["landing", "gateway", ...WORKSPACE_PAGES];
+const PAGE_TITLES = {
+  dashboard: "Dashboard",
+  "assign-roles": "Assign Roles",
+  "create-program": "Create Program",
+  groups: "Groups",
+  "about-event": "About Event",
+};
+const AVATAR_COLORS = ["#db2777", "#ea580c", "#7c3aed", "#059669", "#0284c7", "#d97706"];
 
-  // Elements
-  const deptListEl = document.getElementById("dept-list");
-  const statsTotal = document.getElementById("stat-total");
-  const statsInProgress = document.getElementById("stat-in-progress");
-  const statsCritical = document.getElementById("stat-critical");
-  const statsRate = document.getElementById("stat-rate");
-  const aiPromptInput = document.getElementById("ai-prompt-input");
-  const aiPromptBtn = document.getElementById("ai-prompt-btn");
-  const chatMessagesEl = document.getElementById("chat-messages");
-  const chatInput = document.getElementById("chat-input");
-  const chatSendBtn = document.getElementById("chat-send-btn");
-  const activeDeptTitle = document.getElementById("active-dept-title");
+function esc(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
 
-  // Modals
-  const inviteModal = document.getElementById("invite-modal");
-  const inviteBtn = document.getElementById("btn-invite-member");
-  const inviteClose = document.getElementById("invite-close");
-  const inviteForm = document.getElementById("invite-form");
+function initialsFor(name) {
+  const parts = String(name || "?").trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
 
-  const briefingModal = document.getElementById("briefing-modal");
-  const briefingBtn = document.getElementById("btn-ai-briefing");
-  const briefingClose = document.getElementById("briefing-close");
-  const briefingContent = document.getElementById("briefing-content");
+function colorFor(name) {
+  const s = String(name || "");
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
 
-  // 1. Render Department List
-  function renderDepartments() {
-    deptListEl.innerHTML = "";
-    
-    // "All Departments" option
-    const allLi = document.createElement("li");
-    allLi.className = `dept-item ${currentDepartmentFilter === 'all' ? 'active' : ''}`;
-    allLi.innerHTML = `<span>🌐 All Departments</span>`;
-    allLi.onclick = () => {
-      currentDepartmentFilter = "all";
-      renderDepartments();
-      renderTasks();
-      activeDeptTitle.textContent = "Global Event Board";
-    };
-    deptListEl.appendChild(allLi);
+function statusPill(status) {
+  if (status === "in_progress") return { cls: "live", label: "Live" };
+  if (status === "completed") return { cls: "done", label: "Done" };
+  if (status === "delayed") return { cls: "delayed", label: "Delayed" };
+  return { cls: "soon", label: "Soon" };
+}
 
-    DEPARTMENTS.forEach(dept => {
-      const li = document.createElement("li");
-      li.className = `dept-item ${currentDepartmentFilter === dept.id ? 'active' : ''}`;
-      li.innerHTML = `
-        <span>${dept.icon} ${dept.name}</span>
-        <span class="badge-count">${dept.count}</span>
-      `;
-      li.onclick = () => {
-        currentDepartmentFilter = dept.id;
-        chatManager.setActiveDepartment(dept.id);
-        renderDepartments();
-        renderTasks();
-        renderChat();
-        activeDeptTitle.textContent = dept.name;
-      };
-      deptListEl.appendChild(li);
-    });
+function normalizeView(viewId) {
+  if (viewId === "chat") return "groups";
+  if (ALL_VIEWS.includes(viewId)) return viewId;
+  return "landing";
+}
+
+class AppController {
+  constructor() {
+    this.state = getLocalState();
+    this.currentView = normalizeView(this.state.activeView || "landing");
+    this.selectedProgramId = null;
+    this.aiSeeded = false;
   }
 
-  // 2. Render Kanban Tasks
-  function renderTasks() {
-    const tasks = taskManager.getTasks(currentDepartmentFilter);
-    const cols = {
-      todo: document.getElementById("col-todo"),
-      in_progress: document.getElementById("col-in_progress"),
-      review: document.getElementById("col-review"),
-      completed: document.getElementById("col-completed")
+  init() {
+    auth.onUserChange((user) => this.handleUserRoleChanged(user));
+    this.bindViewNavigation();
+    this.bindGatewayForms();
+    this.bindWorkspaceForms();
+    this.bindChatSystem();
+    this.bindGeminiAssistant();
+    this.bindSessionPopover();
+    taskManager.onProgrammesChange(() => {
+      this.renderDashboard();
+      this.renderProgramsPage();
+      this.renderAbout();
+      this.updateStats();
+    });
+    this.updateHeaderDate();
+    this.switchView(this.currentView, { skipSave: true });
+    this.updateEventDisplay();
+    this.updateStats();
+  }
+
+  // ------------------------------------------------------------------ routing
+  // Single write path: sync manager-owned slices before persisting so page
+  // navigation or roster edits never overwrite fresh programmes/messages
+  // with the stale copies held on this.state.
+  persistState() {
+    this.state.programmes = taskManager.getProgrammes();
+    this.state.messages = chatManager.messages;
+    this.state.currentUser = auth.getCurrentUser();
+    saveLocalState(this.state);
+  }
+
+  switchView(viewId, opts = {}) {
+    const next = normalizeView(viewId);
+    this.currentView = next;
+    if (!opts.skipSave) {
+      this.state.activeView = next;
+      this.persistState();
+    } else {
+      this.state.activeView = next;
+    }
+
+    const landing = document.getElementById("view-landing");
+    const gateway = document.getElementById("view-gateway");
+    const workspace = document.getElementById("view-workspace");
+    const inWorkspace = WORKSPACE_PAGES.includes(next);
+    if (landing) {
+      landing.classList.toggle("active", next === "landing");
+      landing.hidden = next !== "landing";
+    }
+    if (gateway) {
+      gateway.classList.toggle("active", next === "gateway");
+      gateway.hidden = next !== "gateway";
+    }
+    if (workspace) {
+      workspace.classList.toggle("active", inWorkspace);
+      workspace.hidden = !inWorkspace;
+    }
+
+    WORKSPACE_PAGES.forEach((page) => {
+      const el = document.getElementById(`page-${page}`);
+      if (el) el.hidden = page !== next;
+    });
+
+    document.querySelectorAll("[data-workspace-page]").forEach((btn) => {
+      const active = btn.dataset.workspacePage === next;
+      btn.classList.toggle("active", active);
+      if (active) btn.setAttribute("aria-current", "page");
+      else btn.removeAttribute("aria-current");
+    });
+
+    const titleEl = document.getElementById("workspace-page-title");
+    if (titleEl && PAGE_TITLES[next]) titleEl.textContent = PAGE_TITLES[next];
+
+    if (inWorkspace) this.renderWorkspacePage(next);
+    this.closeDrawers();
+    window.scrollTo({ top: 0 });
+  }
+
+  switchWorkspacePage(page) {
+    this.switchView(page);
+  }
+
+  renderWorkspacePage(page) {
+    if (page === "dashboard") this.renderDashboard();
+    if (page === "assign-roles") this.renderAssignRoles();
+    if (page === "create-program") this.renderProgramsPage();
+    if (page === "groups") {
+      this.renderChatChannels();
+      this.renderChatMessages(chatManager.getMessages());
+    }
+    if (page === "about-event") this.renderAbout();
+  }
+
+  bindViewNavigation() {
+    const go = (id, fn) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener("click", fn);
     };
+    go("hero-get-started-btn", () => this.switchView("gateway"));
+    go("hero-demo-login-btn", () => this.switchView("dashboard"));
+    go("btn-side-back-gateway", () => {
+      this.closePopover();
+      this.switchView("gateway");
+    });
+    document.querySelectorAll("[data-workspace-page]").forEach((btn) => {
+      btn.addEventListener("click", () => this.switchWorkspacePage(btn.dataset.workspacePage));
+    });
+    go("btn-open-nav", () => this.openDrawers("nav"));
+    go("btn-close-nav", () => this.closeDrawers());
+    go("btn-open-ai", () => this.openDrawers("ai"));
+    go("btn-close-ai", () => this.closeDrawers());
+    go("workspace-backdrop", () => this.closeDrawers());
 
-    Object.values(cols).forEach(col => col.innerHTML = "");
+    document.querySelectorAll(".role-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        auth.setRole(btn.dataset.role);
+        this.syncRoleButtons();
+      });
+    });
 
-    tasks.forEach(task => {
-      const card = document.createElement("div");
-      card.className = "task-card";
-      card.innerHTML = `
-        <span class="priority-tag priority-${task.priority}">${task.priority}</span>
-        <div class="task-title">${task.title}</div>
-        <div class="task-meta">
-          <span>${task.department}</span>
-          <span>🕒 ${task.dueTime || "18:00"}</span>
-        </div>
-      `;
+    const copyBtn = document.getElementById("btn-copy-code");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", () => {
+        const code = this.state.currentEvent?.sixDigitCode || "";
+        if (navigator.clipboard) navigator.clipboard.writeText(code).catch(() => {});
+        copyBtn.textContent = "Copied";
+        setTimeout(() => { copyBtn.textContent = "Copy"; }, 1200);
+      });
+    }
 
-      // Quick move on click for demo convenience
-      card.onclick = () => {
-        const nextStatusMap = {
-          todo: "in_progress",
-          in_progress: "review",
-          review: "completed",
-          completed: "todo"
-        };
-        taskManager.updateTaskStatus(task.id, nextStatusMap[task.status]);
-      };
-
-      if (cols[task.status]) {
-        cols[task.status].appendChild(card);
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape") {
+        this.closeDrawers();
+        this.closePopover();
       }
     });
-
-    // Update Stats
-    const stats = taskManager.getStats();
-    statsTotal.textContent = stats.total;
-    statsInProgress.textContent = stats.inProgress;
-    statsCritical.textContent = stats.critical;
-    statsRate.textContent = `${stats.completionRate}%`;
   }
 
-  // 3. Render Live Chat
-  function renderChat() {
-    const msgs = chatManager.getMessages();
-    chatMessagesEl.innerHTML = "";
-    msgs.forEach(msg => {
-      const bubble = document.createElement("div");
-      bubble.className = "chat-bubble";
-      bubble.innerHTML = `
-        <div class="chat-header">
-          <span class="chat-sender">${msg.sender} (${msg.role.toUpperCase()})</span>
-          <span class="chat-time">${msg.time}</span>
-        </div>
-        <div class="chat-body">${msg.text}</div>
-      `;
-      chatMessagesEl.appendChild(bubble);
+  openDrawers(which) {
+    const sidebar = document.getElementById("sidebar");
+    const rail = document.getElementById("ai-rail");
+    const backdrop = document.getElementById("workspace-backdrop");
+    const navBtn = document.getElementById("btn-open-nav");
+    const aiBtn = document.getElementById("btn-open-ai");
+    if (which === "nav" && sidebar) sidebar.classList.add("open");
+    if (which === "ai" && rail) rail.classList.add("open");
+    if (backdrop) {
+      backdrop.hidden = false;
+      backdrop.classList.add("show");
+    }
+    if (navBtn) navBtn.setAttribute("aria-expanded", which === "nav" ? "true" : "false");
+    if (aiBtn) aiBtn.setAttribute("aria-expanded", which === "ai" ? "true" : "false");
+  }
+
+  closeDrawers() {
+    const sidebar = document.getElementById("sidebar");
+    const rail = document.getElementById("ai-rail");
+    const backdrop = document.getElementById("workspace-backdrop");
+    if (sidebar) sidebar.classList.remove("open");
+    if (rail) rail.classList.remove("open");
+    if (backdrop) {
+      backdrop.classList.remove("show");
+      backdrop.hidden = true;
+    }
+    const navBtn = document.getElementById("btn-open-nav");
+    const aiBtn = document.getElementById("btn-open-ai");
+    if (navBtn) navBtn.setAttribute("aria-expanded", "false");
+    if (aiBtn) aiBtn.setAttribute("aria-expanded", "false");
+  }
+
+  bindSessionPopover() {
+    const btn = document.getElementById("profile-btn");
+    const pop = document.getElementById("profile-popover");
+    const close = document.getElementById("btn-profile-close");
+    if (!btn || !pop) return;
+    btn.addEventListener("click", () => {
+      const willOpen = pop.hidden;
+      pop.hidden = !willOpen;
+      btn.setAttribute("aria-expanded", willOpen ? "true" : "false");
+      if (willOpen) this.syncRoleButtons();
     });
-    chatMessagesEl.scrollTop = chatMessagesEl.scrollHeight;
+    if (close) close.addEventListener("click", () => this.closePopover());
   }
 
-  // Chat Send Handler
-  function handleSendMessage() {
-    const text = chatInput.value.trim();
-    if (text) {
-      chatManager.sendMessage(text);
-      chatInput.value = "";
-      renderChat();
-    }
+  closePopover() {
+    const pop = document.getElementById("profile-popover");
+    const btn = document.getElementById("profile-btn");
+    if (pop) pop.hidden = true;
+    if (btn) btn.setAttribute("aria-expanded", "false");
   }
 
-  chatSendBtn.onclick = handleSendMessage;
-  chatInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") handleSendMessage();
-  });
+  syncRoleButtons() {
+    const role = auth.getCurrentUser()?.role;
+    document.querySelectorAll(".role-btn").forEach((b) => {
+      b.classList.toggle("active", b.dataset.role === role);
+    });
+  }
 
-  // 4. AI Prompt-to-Task Handler
-  async function handleAIPrompt() {
-    const promptText = aiPromptInput.value.trim();
-    if (!promptText) return;
-
-    aiPromptBtn.textContent = "⏳ Parsing...";
-    aiPromptBtn.disabled = true;
-
+  updateHeaderDate() {
+    const el = document.getElementById("header-datetime");
+    if (!el) return;
     try {
-      const structuredTask = await aiCoordinator.parseNaturalLanguageToTask(promptText);
-      taskManager.addTask(structuredTask);
-      aiPromptInput.value = "";
-      alert(`✨ Sangam AI Created Task:\n"${structuredTask.title}" assigned to ${structuredTask.department} [${structuredTask.priority.toUpperCase()}]`);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      aiPromptBtn.textContent = "✨ Convert to Task";
-      aiPromptBtn.disabled = false;
+      const now = new Date();
+      const date = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+      const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+      el.textContent = `${date} · ${time}`;
+    } catch {
+      el.textContent = "Sep 19, 2026 · 10:23 AM";
     }
   }
 
-  aiPromptBtn.onclick = handleAIPrompt;
-  aiPromptInput.addEventListener("keypress", (e) => {
-    if (e.key === "Enter") handleAIPrompt();
-  });
+  // ------------------------------------------------------------- entry forms
+  bindGatewayForms() {
+    const createForm = document.getElementById("create-event-form");
+    if (createForm) {
+      createForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const input = document.getElementById("input-event-title");
+        const title = (input?.value || "").trim() || "Kraft Night 2026";
+        const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
+        this.state.currentEvent = {
+          id: "evt-" + Date.now(),
+          title,
+          sixDigitCode: randomCode,
+          venue: "Main Auditorium & Campus",
+          status: "active",
+          created_at: new Date().toISOString(),
+        };
+        auth.setRole("manager");
+        this.syncRoleButtons();
+        this.persistState();
+        this.updateEventDisplay();
+        this.switchView("dashboard");
+      });
+    }
 
-  // 5. Role Switcher Handlers
-  document.querySelectorAll(".role-btn").forEach(btn => {
-    btn.onclick = () => {
-      document.querySelectorAll(".role-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      const roleKey = btn.getAttribute("data-role");
-      auth.setRole(roleKey);
+    const pinInputs = document.querySelectorAll(".pin-digit");
+    pinInputs.forEach((input, index) => {
+      input.addEventListener("input", () => {
+        input.value = input.value.replace(/[^0-9]/g, "").slice(0, 1);
+        if (input.value.length === 1 && index < pinInputs.length - 1) pinInputs[index + 1].focus();
+      });
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Backspace" && !input.value && index > 0) pinInputs[index - 1].focus();
+      });
+    });
+
+    const findForm = document.getElementById("find-event-form");
+    if (findForm) {
+      findForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const code = Array.from(pinInputs).map((i) => i.value).join("");
+        if (code.length < 6) {
+          alert("Please enter a valid 6-digit Event Code.");
+          return;
+        }
+        const newAttendee = {
+          id: "usr-" + Date.now(),
+          name: "Guest Attendee (" + code.slice(-3) + ")",
+          email: `guest${code.slice(-3)}@kraft.org`,
+          role: "volunteer",
+          roleBadge: "Awaiting Assignment",
+          groupId: null,
+          groupName: "Unassigned",
+          status: "active",
+          joinedAt: "Just now",
+        };
+        this.state.joinedPeople.unshift(newAttendee);
+        this.persistState();
+        this.renderAssignRoles();
+        this.renderAbout();
+        this.updateStats();
+        this.switchView("dashboard");
+      });
+    }
+  }
+
+  // ---------------------------------------------------------- workspace forms
+  bindWorkspaceForms() {
+    const assignForm = document.getElementById("form-assign-inline");
+    if (assignForm) {
+      assignForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (!auth.canAssignRoles()) {
+          alert("Permission Denied: Only the Event Manager can assign roles.");
+          return;
+        }
+        const nameInput = document.getElementById("assign-new-name");
+        const memberSelect = document.getElementById("assign-member-select");
+        const roleSelect = document.getElementById("assign-role-select-inline");
+        const groupSelect = document.getElementById("assign-group-select-inline");
+        const newName = (nameInput?.value || "").trim();
+        const role = roleSelect?.value || "volunteer";
+        const groupId = groupSelect?.value || "";
+        const group = this.state.groups.find((g) => g.id === groupId) || null;
+
+        if (newName) {
+          const person = {
+            id: "usr-" + Date.now(),
+            name: newName,
+            email: `${newName.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@kraft.org`,
+            role,
+            roleBadge: this.roleBadgeFor(role),
+            groupId: groupId || null,
+            groupName: group ? group.name : "Unassigned",
+            status: "active",
+            joinedAt: "Just now",
+          };
+          this.state.joinedPeople.unshift(person);
+          if (nameInput) nameInput.value = "";
+        } else if (memberSelect?.value) {
+          const person = this.state.joinedPeople.find((p) => p.id === memberSelect.value);
+          if (!person) return;
+          person.role = role;
+          person.roleBadge = this.roleBadgeFor(role);
+          person.groupId = groupId || null;
+          person.groupName = group ? group.name : "Unassigned";
+          // Keep live chat permissions in sync when the reassigned member
+          // is the currently active persona (e.g. Athul moved to Stage).
+          if (person.id === auth.getCurrentUser()?.id) auth.setAssignedGroupId(groupId || null);
+        } else {
+          alert("Enter a full name or select an existing member.");
+          return;
+        }
+        this.persistState();
+        this.renderAssignRoles();
+        this.renderDashboard();
+        this.renderAbout();
+      });
+    }
+
+    const programForm = document.getElementById("form-create-program-inline");
+    if (programForm) {
+      programForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const title = document.getElementById("prog-title-inline")?.value.trim() || "";
+        const venue = document.getElementById("prog-venue-inline")?.value.trim() || "";
+        const start = document.getElementById("prog-start-inline")?.value.trim() || "";
+        const end = document.getElementById("prog-end-inline")?.value.trim() || "";
+        const desc = document.getElementById("prog-desc-inline")?.value.trim() || "";
+        if (!title) {
+          alert("Program name is required.");
+          return;
+        }
+        const created = taskManager.addProgramme({
+          title,
+          startTime: start || "18:00",
+          endTime: end || "19:00",
+          venue: venue || "Main Stage",
+          description: desc,
+          status: "scheduled",
+        });
+        if (created) {
+          programForm.reset();
+          this.selectedProgramId = created.id;
+        }
+      });
+    }
+
+    const groupForm = document.getElementById("form-create-group-inline");
+    if (groupForm) {
+      groupForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        if (!auth.canCreateGroup()) {
+          alert("Permission Denied: Only the Event Manager can create operational groups.");
+          return;
+        }
+        const name = document.getElementById("group-name-inline")?.value.trim() || "";
+        const icon = document.getElementById("group-icon-inline")?.value.trim() || "👥";
+        const leader = document.getElementById("group-leader-inline")?.value.trim() || "TBD";
+        const desc = document.getElementById("group-desc-inline")?.value.trim() || "";
+        if (!name) {
+          alert("Team name is required.");
+          return;
+        }
+        const newGroup = {
+          id: "grp-" + Date.now(),
+          name,
+          icon,
+          leaderName: leader,
+          description: desc,
+          memberCount: 5,
+        };
+        this.state.groups.push(newGroup);
+        this.persistState();
+        chatManager.setActiveGroup(newGroup.id);
+        groupForm.reset();
+        const iconField = document.getElementById("group-icon-inline");
+        if (iconField) iconField.value = "📸";
+        this.renderChatChannels();
+        this.renderAbout();
+        this.updateStats();
+      });
+    }
+  }
+
+  roleBadgeFor(role) {
+    if (role === "manager") return "Event Manager";
+    if (role === "overseer") return "VIP Overseer (Principal)";
+    if (role === "lead") return "Team Leader";
+    return "Volunteer";
+  }
+
+  // --------------------------------------------------------------- dashboard
+  renderDashboard() {
+    const list = document.getElementById("timeline-list");
+    const programmes = taskManager.getProgrammes();
+    if (!programmes.find((p) => p.id === this.selectedProgramId)) {
+      const live = programmes.find((p) => p.status === "in_progress");
+      this.selectedProgramId = (live || programmes[0] || {}).id || null;
+    }
+    if (list) {
+      list.innerHTML = "";
+      if (programmes.length === 0) {
+        const empty = document.createElement("p");
+        empty.className = "empty";
+        empty.textContent = "No programmes scheduled yet. Use Create Program to add the first item.";
+        list.appendChild(empty);
+      }
+      programmes.forEach((prog, index) => {
+        const pill = statusPill(prog.status);
+        const isActive = prog.id === this.selectedProgramId;
+        const row = document.createElement("div");
+        row.className = `timeline-row${isActive ? " active" : ""}${prog.status === "completed" ? " dim" : ""}`;
+        row.setAttribute("role", "listitem");
+        const dotColor = prog.status === "in_progress" ? "#ef4444" : prog.status === "completed" ? "#d1d5db" : prog.status === "delayed" ? "#f59e0b" : "#8b5cf6";
+        const people = (prog.leadGroup ? this.state.joinedPeople.filter((m) => m.groupName === prog.leadGroup).slice(0, 4) : []).map((m) => `
+          <span class="mini-person"><span class="avatar" style="color:${esc(colorFor(m.name))}">${esc(initialsFor(m.name))}</span><span>${esc(m.name)}</span><span class="role">${esc(m.roleBadge || m.role)}</span></span>
+        `).join("");
+        row.innerHTML = `
+          <div class="timeline-rail" aria-hidden="true">
+            <span class="timeline-dot" style="background:${dotColor};${prog.status === "in_progress" ? "box-shadow:0 0 0 4px #fee2e2;" : ""}"></span>
+            ${index < programmes.length - 1 ? '<span class="timeline-line"></span>' : ""}
+          </div>
+          <div class="timeline-body">
+            <div class="timeline-top">
+              <span class="timeline-name">${esc(prog.title)}</span>
+              ${auth.canEditProgramme()
+                ? `<button type="button" class="pill ${pill.cls}" data-cycle="${esc(prog.id)}" title="Manager: click to cycle status">${esc(pill.label)}</button>`
+                : `<span class="pill ${pill.cls}">${esc(pill.label)}</span>`}
+            </div>
+            <div class="timeline-meta"><span>${esc(prog.startTime || "")}</span><span>·</span><span>${esc(prog.endTime || "")}</span><span>·</span><span>${esc(prog.venue || "")}</span></div>
+            ${isActive && people ? `<div class="timeline-people">${people}</div>` : ""}
+            ${isActive && auth.canEditProgramme() ? `<div class="status-row"><button type="button" class="btn-light btn-small" data-cycle="${esc(prog.id)}">Advance status</button></div>` : ""}
+          </div>
+        `;
+        row.addEventListener("click", (e) => {
+          const cycleBtn = e.target.closest("[data-cycle]");
+          if (cycleBtn) {
+            taskManager.cycleProgrammeStatus(cycleBtn.dataset.cycle);
+            return;
+          }
+          this.selectedProgramId = prog.id;
+          this.renderDashboard();
+        });
+        list.appendChild(row);
+      });
+    }
+    this.renderAssignedPanel();
+    this.updateLiveBadges();
+  }
+
+  renderAssignedPanel() {
+    const programmes = taskManager.getProgrammes();
+    const active = programmes.find((p) => p.id === this.selectedProgramId) || programmes[0];
+    const nameEl = document.getElementById("assigned-program-name");
+    const box = document.getElementById("assigned-roles-list");
+    if (nameEl) nameEl.textContent = active ? active.title : "No programme selected";
+    if (!box) return;
+    box.innerHTML = "";
+    if (!active) {
+      box.innerHTML = '<p class="empty">No programmes available.</p>';
+      return;
+    }
+    const assigned = active.leadGroup
+      ? this.state.joinedPeople.filter((m) => m.groupName === active.leadGroup)
+      : [];
+    if (assigned.length === 0) {
+      const p = document.createElement("p");
+      p.className = "empty";
+      p.textContent = active.leadGroup
+        ? `No roster members are currently grouped under ${active.leadGroup}.`
+        : "No lead group is set for this programme.";
+      box.appendChild(p);
+      return;
+    }
+    assigned.slice(0, 8).forEach((person) => {
+      const row = document.createElement("div");
+      row.className = "assigned-row";
+      row.innerHTML = `
+        <span class="avatar" style="color:${esc(colorFor(person.name))}">${esc(initialsFor(person.name))}</span>
+        <div style="flex:1;min-width:0"><strong>${esc(person.name)}</strong><span>${esc(person.roleBadge || person.role)} · ${esc(person.groupName || "Unassigned")}</span></div>
+      `;
+      box.appendChild(row);
+    });
+  }
+
+  updateLiveBadges() {
+    const hasLive = taskManager.getProgrammes().some((p) => p.status === "in_progress");
+    ["header-live-badge", "dashboard-live-badge"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.style.display = hasLive ? "inline-flex" : "none";
+    });
+  }
+
+  // ------------------------------------------------------------ assign roles
+  renderAssignRoles() {
+    const memberSelect = document.getElementById("assign-member-select");
+    const groupSelect = document.getElementById("assign-group-select-inline");
+    const roleSelect = document.getElementById("assign-role-select-inline");
+    const submit = document.getElementById("assign-submit-btn");
+    const hint = document.getElementById("assign-form-hint");
+    const canAssign = auth.canAssignRoles();
+
+    if (memberSelect) {
+      const current = memberSelect.value;
+      memberSelect.innerHTML = '<option value="">Select a member to update</option>' +
+        this.state.joinedPeople.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${esc(p.roleBadge || p.role)}</option>`).join("");
+      if ([...memberSelect.options].some((o) => o.value === current)) memberSelect.value = current;
+    }
+    if (groupSelect) {
+      groupSelect.innerHTML = '<option value="">No group (General)</option>' +
+        this.state.groups.map((g) => `<option value="${esc(g.id)}">${esc(g.icon || "👥")} ${esc(g.name)}</option>`).join("");
+    }
+    ["assign-new-name", "assign-member-select", "assign-role-select-inline", "assign-group-select-inline"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !canAssign;
+    });
+    if (submit) {
+      submit.disabled = !canAssign;
+      submit.textContent = canAssign ? "Add Member" : "Manager only";
+    }
+    if (hint) hint.textContent = canAssign ? "New names create roster entries; selecting a member updates that entry." : "Only the Event Manager can assign roles and groups.";
+    if (roleSelect && !roleSelect.value) roleSelect.value = "volunteer";
+
+    const list = document.getElementById("joined-people-list");
+    if (!list) return;
+    list.innerHTML = "";
+    if (this.state.joinedPeople.length === 0) {
+      list.innerHTML = '<p class="empty">No members have joined yet.</p>';
+      return;
+    }
+    this.state.joinedPeople.forEach((person) => {
+      const card = document.createElement("div");
+      card.className = "roster-card";
+      card.setAttribute("role", "listitem");
+      card.innerHTML = `
+        <span class="avatar" style="color:${esc(colorFor(person.name))}">${esc(initialsFor(person.name))}</span>
+        <div class="roster-main">
+          <div class="roster-name">${esc(person.name)}</div>
+          <div class="roster-tags"><span class="pill neutral">${esc(person.roleBadge || person.role)}</span><span class="pill neutral">${esc(person.groupName || "Unassigned")}</span></div>
+        </div>
+        ${canAssign ? `<button type="button" class="remove-btn" data-remove="${esc(person.id)}">Remove</button>` : ""}
+      `;
+      const removeBtn = card.querySelector("[data-remove]");
+      if (removeBtn) {
+        removeBtn.addEventListener("click", () => {
+          this.state.joinedPeople = this.state.joinedPeople.filter((p) => p.id !== person.id);
+          this.persistState();
+          this.renderAssignRoles();
+          this.renderDashboard();
+          this.renderAbout();
+          this.updateStats();
+        });
+      }
+      list.appendChild(card);
+    });
+  }
+
+  // ------------------------------------------------------------ create program
+  renderProgramsPage() {
+    const list = document.getElementById("programs-list");
+    const canCreate = auth.canCreateProgramme();
+    ["prog-title-inline", "prog-venue-inline", "prog-start-inline", "prog-end-inline", "prog-desc-inline"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !canCreate;
+    });
+    const formBtn = document.querySelector("#form-create-program-inline button[type=submit]");
+    if (formBtn) {
+      formBtn.disabled = !canCreate;
+      formBtn.textContent = canCreate ? "Add to Schedule" : "Manager only";
+    }
+    const hint = document.getElementById("program-form-hint");
+    if (hint) hint.textContent = canCreate ? "New entries appear here and on the Dashboard timeline." : "Only the Event Manager can schedule programs.";
+    if (!list) return;
+    list.innerHTML = "";
+    const programmes = taskManager.getProgrammes();
+    if (programmes.length === 0) {
+      list.innerHTML = '<p class="empty">No programmes scheduled yet.</p>';
+      return;
+    }
+    programmes.forEach((prog) => {
+      const pill = statusPill(prog.status);
+      const row = document.createElement("div");
+      row.className = "program-card";
+      row.setAttribute("role", "listitem");
+      row.innerHTML = `
+        <div class="program-main">
+          <div class="program-name">${esc(prog.title)}</div>
+          <div class="program-sub"><span>${esc(prog.startTime || "")}</span><span>·</span><span>${esc(prog.endTime || "")}</span><span>·</span><span>${esc(prog.venue || "")}</span></div>
+        </div>
+        <div class="program-actions">
+          ${canCreate ? `<button type="button" class="pill ${pill.cls}" data-cycle="${esc(prog.id)}" title="Cycle status">${esc(pill.label)}</button><button type="button" class="remove-btn" data-delete="${esc(prog.id)}">Delete</button>`
+            : `<span class="pill ${pill.cls}">${esc(pill.label)}</span>`}
+        </div>
+      `;
+      const cycle = row.querySelector("[data-cycle]");
+      if (cycle) cycle.addEventListener("click", () => taskManager.cycleProgrammeStatus(prog.id));
+      const del = row.querySelector("[data-delete]");
+      if (del) del.addEventListener("click", () => {
+        if (confirm(`Remove "${prog.title}" from the schedule?`)) taskManager.deleteProgramme(prog.id);
+      });
+      list.appendChild(row);
+    });
+  }
+
+  // ------------------------------------------------------------------- groups
+  bindChatSystem() {
+    chatManager.onChatUpdate((messages) => this.renderChatMessages(messages));
+    const form = document.getElementById("chat-send-form");
+    if (form) {
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const input = document.getElementById("chat-text-input");
+        const text = (input?.value || "").trim();
+        if (!text) return;
+        const sent = chatManager.sendMessage(text);
+        if (sent && input) input.value = "";
+      });
+    }
+  }
+
+  renderChatChannels() {
+    const list = document.getElementById("channels-list");
+    const count = document.getElementById("groups-count");
+    const canCreate = auth.canCreateGroup();
+    ["group-name-inline", "group-icon-inline", "group-leader-inline", "group-desc-inline"].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !canCreate;
+    });
+    const groupBtn = document.querySelector("#form-create-group-inline button[type=submit]");
+    if (groupBtn) {
+      groupBtn.disabled = !canCreate;
+      groupBtn.textContent = canCreate ? "Register Team" : "Manager only";
+    }
+    const hint = document.getElementById("group-form-hint");
+    if (hint) hint.textContent = canCreate ? "New teams immediately get a chat channel." : "Only the Event Manager can create operational groups.";
+
+    if (count) count.textContent = `${this.state.groups.length} teams registered`;
+    const messagesByGroup = chatManager.messages || {};
+    if (list) {
+      list.innerHTML = "";
+      const visible = this.state.groups.filter((g) => auth.canViewGroup(g.id));
+      if (visible.length === 0) {
+        list.innerHTML = '<p class="empty">No channels are visible for this role.</p>';
+      }
+      visible.forEach((group) => {
+        const msgs = messagesByGroup[group.id] || [];
+        const last = msgs[msgs.length - 1];
+        const active = group.id === chatManager.getActiveGroupId();
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = `group-btn${active ? " active" : ""}`;
+        btn.setAttribute("role", "listitem");
+        btn.innerHTML = `
+          <span class="group-top"><span class="group-name">${esc(group.icon || "👥")} ${esc(group.name)}</span><span class="pill neutral">${esc(String(group.memberCount || 10))} members</span></span>
+          <span class="group-preview">${esc(last ? `${last.senderName}: ${last.text}` : (group.description || "No messages yet"))}</span>
+        `;
+        btn.addEventListener("click", () => {
+          chatManager.setActiveGroup(group.id);
+          this.renderChatChannels();
+          this.renderChatMessages(chatManager.getMessages());
+        });
+        list.appendChild(btn);
+      });
+    }
+    const activeGroup = this.state.groups.find((g) => g.id === chatManager.getActiveGroupId()) || this.state.groups[0];
+    if (activeGroup && chatManager.getActiveGroupId() !== activeGroup.id) chatManager.setActiveGroup(activeGroup.id);
+    this.updateActiveChatHeader(activeGroup);
+    this.updateChatPermissionsUI();
+  }
+
+  updateActiveChatHeader(group) {
+    const titleEl = document.getElementById("chat-active-group-name");
+    const metaEl = document.getElementById("chat-active-group-meta");
+    const inputEl = document.getElementById("chat-text-input");
+    const avatars = document.getElementById("chat-header-avatars");
+    if (!group) {
+      if (titleEl) titleEl.textContent = "Select a group";
+      if (metaEl) metaEl.textContent = "No operational groups available";
+      return;
+    }
+    if (titleEl) titleEl.textContent = group.name;
+    if (metaEl) metaEl.textContent = `${group.icon || "👥"} ${group.memberCount || 10} members · Lead: ${group.leaderName || "TBD"}`;
+    if (inputEl) inputEl.placeholder = `Message ${group.name}…`;
+    if (avatars) {
+      const members = this.state.joinedPeople.filter((m) => m.groupId === group.id).slice(0, 4);
+      avatars.innerHTML = members.map((m) => `<span class="avatar" title="${esc(m.name)}" style="color:${esc(colorFor(m.name))}">${esc(initialsFor(m.name))}</span>`).join("");
+    }
+  }
+
+  updateChatPermissionsUI() {
+    const activeGroupId = chatManager.getActiveGroupId();
+    const group = this.state.groups.find((g) => g.id === activeGroupId);
+    if (group) this.updateActiveChatHeader(group);
+    const canPost = auth.canPostInGroup(activeGroupId);
+    const banner = document.getElementById("chat-read-only-banner");
+    const input = document.getElementById("chat-text-input");
+    const submit = document.getElementById("chat-submit-btn");
+    if (banner && input && submit) {
+      if (canPost) {
+        banner.hidden = true;
+        input.disabled = false;
+        submit.disabled = false;
+      } else {
+        banner.hidden = false;
+        banner.textContent = auth.isOverseer()
+          ? "Read-only observer mode: VIP Overseers cannot post messages."
+          : "Department isolation: you can read this channel but can only post in your assigned group.";
+        input.disabled = true;
+        submit.disabled = true;
+      }
+    }
+  }
+
+  renderChatMessages(messages) {
+    const container = document.getElementById("chat-bubbles-scroll");
+    if (!container) return;
+    // Only render the active chat page content; container exists even when hidden.
+    container.innerHTML = "";
+    const currentUser = auth.getCurrentUser();
+    if (!messages || messages.length === 0) {
+      container.innerHTML = '<p class="empty">No messages yet. Start the coordination here.</p>';
+      return;
+    }
+    messages.forEach((msg) => {
+      const mine = msg.senderId === currentUser.id;
+      const row = document.createElement("div");
+      row.className = `msg-row${mine ? " mine" : ""}`;
+      row.innerHTML = `
+        ${mine ? "" : `<span class="avatar" style="color:${esc(colorFor(msg.senderName))}">${esc(initialsFor(msg.senderName))}</span>`}
+        <div><div class="msg-bubble">${esc(msg.text)}</div><div class="msg-meta">${esc(mine ? "You" : msg.senderName)} · ${esc(msg.time || "")}</div></div>
+      `;
+      container.appendChild(row);
+    });
+    container.scrollTop = container.scrollHeight;
+  }
+
+  // --------------------------------------------------------------------- about
+  renderAbout() {
+    const evt = this.state.currentEvent || {};
+    const programmes = taskManager.getProgrammes();
+    const set = (id, text) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
     };
-  });
+    set("about-event-title", evt.title || "Kraft Night 2026");
+    set("about-event-sub", `${evt.title || "Kraft Night 2026"} · Unified event command center`);
+    set("about-field-title", evt.title || "Kraft Night 2026");
+    set("about-field-venue", evt.venue || "Main Campus & Auditorium");
+    set("about-field-pin", evt.sixDigitCode || "—");
+    set("about-field-status", evt.status || "active");
+    set("about-field-programs", `${programmes.length} scheduled`);
+    set("about-field-members", `${this.state.joinedPeople.length} joined`);
 
-  auth.onUserChange((user) => {
-    document.getElementById("user-name-display").textContent = user.name;
-    document.getElementById("user-role-badge").textContent = user.role.toUpperCase();
-    document.getElementById("user-avatar").src = user.avatar;
-  });
+    const groupsBox = document.getElementById("about-groups-list");
+    if (groupsBox) {
+      groupsBox.innerHTML = "";
+      if (this.state.groups.length === 0) groupsBox.innerHTML = '<p class="empty">No operational groups yet.</p>';
+      this.state.groups.forEach((g) => {
+        const pill = document.createElement("span");
+        pill.className = "pill neutral";
+        pill.textContent = `${g.icon || "👥"} ${g.name}`;
+        groupsBox.appendChild(pill);
+      });
+    }
 
-  // 6. SendGrid Invitation Modal
-  inviteBtn.onclick = () => inviteModal.classList.add("active");
-  inviteClose.onclick = () => inviteModal.classList.remove("active");
-  inviteForm.onsubmit = async (e) => {
-    e.preventDefault();
-    const email = document.getElementById("invite-email").value;
-    const name = document.getElementById("invite-name").value;
-    const role = document.getElementById("invite-role").value;
-    const dept = document.getElementById("invite-dept").value;
+    const orgBox = document.getElementById("about-organizers-list");
+    if (orgBox) {
+      orgBox.innerHTML = "";
+      const manager = this.state.joinedPeople.find((p) => p.role === "manager");
+      const rows = [
+        { name: manager ? manager.name : auth.getCurrentUser()?.name || "Event Manager", role: "Lead Organizer" },
+        ...this.state.groups.slice(0, 8).map((g) => ({ name: `${g.name} — ${g.leaderName || "TBD"}`, role: "Group Lead" })),
+      ];
+      rows.forEach((r) => {
+        const row = document.createElement("div");
+        row.className = "org-row";
+        row.innerHTML = `<span style="font-size:14px;font-weight:500"></span><span class="pill neutral"></span>`;
+        row.firstChild.textContent = r.name;
+        row.lastChild.textContent = r.role;
+        orgBox.appendChild(row);
+      });
+    }
 
-    const res = await emailService.sendInvitation({ email, name, role, department: dept });
-    alert(res.message);
-    inviteModal.classList.remove("active");
-    inviteForm.reset();
-  };
+    const sub = document.getElementById("dashboard-schedule-sub");
+    if (sub && evt.title) sub.textContent = `${evt.title} · Live programme timeline`;
+  }
 
-  // 7. Executive Status Briefing Modal
-  briefingBtn.onclick = async () => {
-    briefingContent.innerHTML = "<p>Analyzing live tasks and bottlenecks with Google Gemini...</p>";
-    briefingModal.classList.add("active");
-    const briefing = await aiCoordinator.generateStatusBriefing(taskManager.getTasks("all"));
+  // ------------------------------------------------------------------------ AI
+  bindGeminiAssistant() {
+    this.seedAiThread();
+    document.querySelectorAll(".ai-chip, .chip").forEach((chip) => {
+      if (chip.dataset.bound) return;
+      chip.dataset.bound = "true";
+      chip.addEventListener("click", () => {
+        const prompt = chip.dataset.prompt;
+        if (prompt) this.submitGeminiPrompt(prompt);
+      });
+    });
+    const form = document.getElementById("gemini-input-form");
+    if (form && !form.dataset.bound) {
+      form.dataset.bound = "true";
+      form.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const input = document.getElementById("gemini-prompt-input");
+        const prompt = (input?.value || "").trim();
+        if (!prompt) return;
+        if (input) input.value = "";
+        this.submitGeminiPrompt(prompt);
+      });
+    }
+    const briefingBtn = document.getElementById("btn-ai-briefing");
+    if (briefingBtn && !briefingBtn.dataset.bound) {
+      briefingBtn.dataset.bound = "true";
+      briefingBtn.addEventListener("click", async () => {
+        const briefing = await aiCoordinator.generateStatusBriefing(taskManager.getProgrammes());
+        this.appendAiMessage("bot", `Status: ${briefing.status} · Completion ${briefing.completionRate}. ${briefing.summary} Next: ${briefing.nextActions[0] || "Monitor the live programme."}`);
+      });
+    }
+  }
 
-    briefingContent.innerHTML = `
-      <div style="margin-bottom: 16px;">
-        <span style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; padding: 4px 10px; border-radius: 999px; font-weight: bold; font-size: 12px;">Status: ${briefing.status}</span>
-        <span style="margin-left: 8px; font-size: 13px; color: #94a3b8;">Completion: ${briefing.completionRate}</span>
-      </div>
-      <p style="font-size: 14px; line-height: 1.5; margin-bottom: 16px;">${briefing.summary}</p>
-      <h4 style="font-size: 13px; color: #f43f5e; margin-bottom: 8px;">⚠️ Identified Bottlenecks & Delay Risks:</h4>
-      <ul style="padding-left: 20px; font-size: 13px; margin-bottom: 16px; color: #fda4af;">
-        ${briefing.identifiedRisks.length > 0 ? briefing.identifiedRisks.map(r => `<li>${r}</li>`).join("") : "<li>No critical delays detected. All streams active.</li>"}
-      </ul>
-      <h4 style="font-size: 13px; color: #10b981; margin-bottom: 8px;">✅ Immediate 2-Hour Action Plan:</h4>
-      <ul style="padding-left: 20px; font-size: 13px; color: #a7f3d0;">
-        ${briefing.nextActions.map(a => `<li>${a}</li>`).join("")}
-      </ul>
+  seedAiThread() {
+    if (this.aiSeeded) return;
+    const thread = document.getElementById("gemini-thread");
+    if (!thread || thread.childElementCount > 0) {
+      this.aiSeeded = true;
+      return;
+    }
+    this.aiSeeded = true;
+    this.appendAiMessage("bot", "Hi! I'm your event AI assistant. Ask me about schedules, teams, roles, or event logistics.");
+    this.appendAiMessage("bot", "Competition is live. Ask for schedule, teams, roles, or an executive status briefing.");
+  }
+
+  appendAiMessage(from, text) {
+    const thread = document.getElementById("gemini-thread");
+    if (!thread) return;
+    const row = document.createElement("div");
+    row.className = `ai-msg ${from}`;
+    row.innerHTML = `
+      ${from === "bot" ? '<span class="ai-avatar">✦</span>' : ""}
+      <div class="ai-bubble"></div>
     `;
-  };
-  briefingClose.onclick = () => briefingModal.classList.remove("active");
+    row.querySelector(".ai-bubble").textContent = text;
+    thread.appendChild(row);
+    thread.scrollTop = thread.scrollHeight;
+  }
 
-  // Initial Sync
-  taskManager.onTasksChange(() => renderTasks());
-  renderDepartments();
-  renderChat();
+  async submitGeminiPrompt(promptText) {
+    const thread = document.getElementById("gemini-thread");
+    if (!thread || !promptText.trim()) return;
+    this.appendAiMessage("user", promptText.trim());
+    this.appendAiMessage("bot", "Thinking and checking the live event state…");
+    const loading = thread.lastChild;
+    const eventContext = {
+      eventTitle: this.state.currentEvent?.title,
+      eventCode: this.state.currentEvent?.sixDigitCode,
+      programmes: taskManager.getProgrammes(),
+      groups: this.state.groups,
+    };
+    try {
+      const response = await aiCoordinator.askGemini(promptText, eventContext);
+      if (loading) loading.remove();
+      this.appendAiMessage("bot", String(response || "I could not generate a briefing right now."));
+    } catch (err) {
+      if (loading) loading.remove();
+      this.appendAiMessage("bot", "AI is temporarily unavailable. The local briefing fallback remains ready.");
+    }
+  }
+
+  // ------------------------------------------------------------------ session
+  handleUserRoleChanged(user) {
+    const nameEl = document.getElementById("user-name-display");
+    const deptEl = document.getElementById("user-dept-display");
+    const badgeEl = document.getElementById("user-role-badge");
+    const initialsEl = document.getElementById("user-avatar-initials");
+    if (nameEl) nameEl.textContent = user.name;
+    if (deptEl) deptEl.textContent = user.department || user.roleLabel || user.role;
+    if (badgeEl) {
+      badgeEl.textContent = user.role.toUpperCase();
+      badgeEl.className = `role-tag role-${user.role}`;
+    }
+    if (initialsEl) {
+      initialsEl.textContent = initialsFor(user.name);
+      initialsEl.style.color = colorFor(user.name);
+    }
+    this.syncRoleButtons();
+    this.renderAssignRoles();
+    this.renderProgramsPage();
+    this.renderChatChannels();
+    this.renderChatMessages(chatManager.getMessages());
+    this.updateChatPermissionsUI();
+  }
+
+  updateEventDisplay() {
+    const evt = this.state.currentEvent || {};
+    const titleEl = document.getElementById("side-event-title");
+    const codeEl = document.getElementById("side-event-code");
+    const navCodeEl = document.getElementById("nav-code-display");
+    if (titleEl) titleEl.textContent = evt.title || "Kraft Night 2026";
+    if (codeEl) codeEl.textContent = `PIN: ${evt.sixDigitCode || "—"}`;
+    if (navCodeEl) navCodeEl.textContent = evt.sixDigitCode || "—";
+    this.renderAbout();
+  }
+
+  updateStats() {
+    const stats = taskManager.getStats();
+    const set = (id, text) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    };
+    set("stat-total-prog", String(taskManager.getProgrammes().length));
+    set("stat-completed-prog", String(stats.completed));
+    set("stat-teams-count", String(this.state.groups.length));
+    set("stat-hackers-count", String(this.state.joinedPeople.length));
+    set("stat-in-progress-prog", String(stats.inProgress));
+    set("stat-delayed-prog", String(stats.delayed));
+    set("stat-completion-rate", `${stats.completionRate}%`);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  const app = new AppController();
+  app.init();
+  window.sangamApp = app;
 });

@@ -1,0 +1,4 @@
+# env.js is local-only (Supabase URL + anon key). Never commit it.
+env.js
+
+.vercel
