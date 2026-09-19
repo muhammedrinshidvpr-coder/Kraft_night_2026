@@ -144,6 +144,45 @@ class TaskManager {
     }
   }
 
+  syncStatusesWithRealTime(targetDate = new Date()) {
+    const currentMinutes = targetDate.getHours() * 60 + targetDate.getMinutes();
+    let hasChanges = false;
+
+    this.programmes.forEach((prog) => {
+      const start = parseTimeToMinutes(prog.startTime);
+      const end = parseTimeToMinutes(prog.endTime);
+      if (start === null || end === null) return;
+
+      let expectedStatus = "scheduled";
+      if (end >= start) {
+        if (currentMinutes >= start && currentMinutes < end) {
+          expectedStatus = "in_progress";
+        } else if (currentMinutes >= end) {
+          expectedStatus = "completed";
+        } else {
+          expectedStatus = "scheduled";
+        }
+      } else {
+        // Event spans across midnight
+        if (currentMinutes >= start || currentMinutes < end) {
+          expectedStatus = "in_progress";
+        } else {
+          expectedStatus = "completed";
+        }
+      }
+
+      if (prog.status !== expectedStatus) {
+        prog.status = expectedStatus;
+        hasChanges = true;
+      }
+    });
+
+    if (hasChanges) {
+      this.saveAndNotify("Realtime schedule status auto-refreshed");
+    }
+    return hasChanges;
+  }
+
   getProgrammes() {
     return this.programmes;
   }
@@ -168,6 +207,7 @@ class TaskManager {
     this.programmes.push(newProg);
     // Sort chronologically by startTime
     this.programmes.sort((a, b) => (a.startTime > b.startTime ? 1 : -1));
+    this.syncStatusesWithRealTime();
     this.saveAndNotify("Programme Scheduled: " + newProg.title);
 
     // Broadcast to Supabase
