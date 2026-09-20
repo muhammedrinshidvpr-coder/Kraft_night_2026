@@ -10,19 +10,15 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, full_name, email, role, department)
+  insert into public.profiles (id, full_name, email)
   values (
     new.id::text,
     coalesce(nullif(new.raw_user_meta_data ->> 'full_name', ''), split_part(new.email, '@', 1)),
-    new.email,
-    'manager',
-    'Event Organizer'
+    new.email
   )
   on conflict (id) do update
     set full_name = excluded.full_name,
-        email = excluded.email,
-        role = excluded.role,
-        department = excluded.department;
+        email = excluded.email;
   return new;
 end;
 $$;

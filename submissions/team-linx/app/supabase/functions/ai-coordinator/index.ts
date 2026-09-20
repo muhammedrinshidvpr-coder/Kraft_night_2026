@@ -10,7 +10,7 @@ const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY") || "";
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL") || "";
 const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") || "";
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") || "";
-const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-1.5-flash";
+const GEMINI_MODEL = Deno.env.get("GEMINI_MODEL") || "gemini-2.5-flash";
 const GEMINI_TIMEOUT_MS = 20_000;
 
 const corsHeaders = {
@@ -197,7 +197,7 @@ function getRequesterClient(authorization: string): SupabaseClient {
   });
 }
 
-async function requireManager(req: Request) {
+async function requireManager(req: Request, allowFirstEventCreator = false) {
   const authorization = req.headers.get("Authorization");
   const token = authorization?.match(/^Bearer\s+(.+)$/i)?.[1];
   if (!token || !authorization) {
@@ -210,19 +210,32 @@ async function requireManager(req: Request) {
     throw new AppError(401, "invalid_session", "Your session is invalid or has expired.");
   }
 
-  const { data: profiles, error: membershipError } = await server
+  const { data: profiles, error: profileError } = await server
     .from("profiles")
-    .select("id")
+    .select("id, role")
     .eq("id", userData.user.id)
-    .eq("role", "manager")
     .limit(1);
-  if (membershipError) {
+  if (profileError) {
     throw new AppError(500, "authorization_check_failed", "Unable to verify manager access.");
   }
-  if (!profiles?.length) {
+  if (profiles?.[0]?.role === "manager") {
+    return { server, requester: getRequesterClient(authorization), userId: userData.user.id };
+  }
+  if (!allowFirstEventCreator) {
     throw new AppError(403, "manager_required", "Only event managers can use AI actions.");
   }
 
+  const { data: memberships, error: membershipError } = await server
+    .from("event_members")
+    .select("id")
+    .eq("user_id", userData.user.id)
+    .limit(1);
+  if (membershipError) {
+    throw new AppError(500, "authorization_check_failed", "Unable to verify event membership.");
+  }
+  if (memberships?.length) {
+    throw new AppError(403, "manager_required", "Only event managers can use AI actions.");
+  }
   return { server, requester: getRequesterClient(authorization), userId: userData.user.id };
 }
 
@@ -278,7 +291,7 @@ async function planEvent(body: JsonObject, server: SupabaseClient, userId: strin
   const result = await generateGeminiContent({
     contents: [{ role: "user", parts: [{ text: prompt }] }],
     systemInstruction: {
-      parts: [{ text: "You create operational event blueprints. Return JSON only, matching the supplied schema. Create a new draft event; do not assign people to roles." }],
+      parts: [{ text: "You create operational event blueprints. Return JSON only, matching the supplied schema. Create a new draft event; do not assign people to roles. Include programmes only when the user supplies a concrete date and time. Every included startTime and endTime must be an ISO 8601 timestamp; otherwise return an empty programmes array." }],
     },
     generationConfig: {
       temperature: 0.2,
@@ -390,7 +403,8 @@ export async function handleRequest(req: Request) {
       throw new AppError(400, "invalid_request", "Request must include an AI action.");
     }
 
-    const { server, requester, userId } = await requireManager(req);
+    const canCreateFirstEvent = body.action === "plan_event" || body.action === "apply_event_blueprint";
+    const { server, requester, userId } = await requireManager(req, canCreateFirstEvent);
     if (body.action === "plan_event") return jsonResponse(await planEvent(body, server, userId));
     if (body.action === "apply_event_blueprint") return jsonResponse(await applyEventBlueprint(body, requester));
     if (["chat", "nl_to_task", "risk_briefing"].includes(body.action)) return await genericAction(body.action, body);

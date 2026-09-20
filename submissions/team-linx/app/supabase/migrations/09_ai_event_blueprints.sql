@@ -43,8 +43,12 @@ declare
   v_event_id text; v_code varchar(10); v_group_ids text[] := array[]::text[]; v_group_id text; v_item jsonb; v_index integer;
 begin
   if auth.uid() is null then raise exception 'Authentication is required.' using errcode = '42501'; end if;
-  select full_name, email into v_name, v_email from public.profiles where id = v_user_id and role = 'manager';
-  if v_name is null then raise exception 'Only event managers can apply AI blueprints.' using errcode = '42501'; end if;
+  select full_name, email into v_name, v_email from public.profiles where id = v_user_id;
+  if v_name is null then raise exception 'Authenticated profile is required.' using errcode = '42501'; end if;
+  if not exists (select 1 from public.profiles where id = v_user_id and role = 'manager') then
+    if exists (select 1 from public.event_members where user_id = v_user_id) then raise exception 'Only event managers can apply AI blueprints.' using errcode = '42501'; end if;
+    update public.profiles set role = 'manager', department = 'Event Organizer' where id = v_user_id;
+  end if;
   select manager_id, status into v_manager_id, v_status from public.ai_event_blueprints where id = p_blueprint_id for update;
   if not found or v_manager_id <> v_user_id or v_status <> 'draft' then raise exception 'Blueprint cannot be applied.' using errcode = '22023'; end if;
   if char_length(btrim(coalesce(p_event_title, ''))) not between 1 and 160 or char_length(btrim(coalesce(p_venue, ''))) not between 1 and 160 then raise exception 'Event title and venue are required.' using errcode = '22023'; end if;

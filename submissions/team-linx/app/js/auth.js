@@ -15,7 +15,7 @@ function computeInitials(name = "") {
 
 class AuthManager {
   constructor() {
-    this.currentUser = this.loadSavedUser() || PRESET_USERS.manager;
+    this.currentUser = this.loadSavedUser() || null;
     this.listeners = [];
   }
 
@@ -24,7 +24,7 @@ class AuthManager {
       const raw = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
       if (raw) {
         const parsed = JSON.parse(raw);
-        if (parsed && parsed.name && parsed.role) return parsed;
+        if (parsed && parsed.name) return parsed;
       }
     } catch (e) {
       console.warn("Could not load saved user session:", e);
@@ -79,6 +79,7 @@ class AuthManager {
     const cleanEmail = email ? email.trim() : `${cleanName.toLowerCase().replace(/\s+/g, "")}@sangam.app`;
     const initials = computeInitials(cleanName);
     let userId = "usr-" + cleanName.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10) + "-" + Date.now().toString(36);
+    let canCreateFirstEvent = false;
 
     if (isLive()) {
       const sb = await getSupabase();
@@ -89,7 +90,12 @@ class AuthManager {
         options: { data: { full_name: cleanName } },
       });
       if (error || !data.user) throw new Error(error?.message || "Could not create your secure account.");
+      if (!data.session) {
+        const { error: sessionError } = await sb.auth.signInWithPassword({ email: cleanEmail, password });
+        if (sessionError) throw new Error(sessionError.message || "Account created, but secure sign-in failed. Please log in.");
+      }
       userId = data.user.id;
+      canCreateFirstEvent = true;
     }
 
     const user = {
@@ -99,11 +105,11 @@ class AuthManager {
       avatar: initials,
       role: "manager",
       department: "Event Organizer",
-      assignedGroupId: null
+      assignedGroupId: null,
+      canCreateFirstEvent,
     };
 
     if (isLive()) {
-      // Migration 10 creates the profile from the authenticated user record.
       this.setCustomUser(user);
       return user;
     }
@@ -138,6 +144,7 @@ class AuthManager {
       const { data, error } = await sb.auth.signInWithPassword({ email, password });
       if (error || !data.user) throw new Error(error?.message || "Could not sign in securely.");
       const { data: profiles } = await sb.from("profiles").select("role").eq("id", data.user.id).limit(1);
+      const { data: memberships } = await sb.from("event_members").select("id").eq("user_id", data.user.id).limit(1);
       const isManager = profiles?.[0]?.role === "manager";
       const user = {
         id: data.user.id,
@@ -147,12 +154,13 @@ class AuthManager {
         role: isManager ? "manager" : "volunteer",
         department: isManager ? "Event Organizer" : "Event Member",
         assignedGroupId: null,
+        canCreateFirstEvent: !isManager && !memberships?.length,
       };
       this.setCustomUser(user);
       return user;
     }
 
-    // 1. Check local registered users
+    // Check local registered users
     const registered = this.getRegisteredUsers();
     const match = registered.find(u =>
       (u.name && u.name.toLowerCase() === q) ||
@@ -176,33 +184,7 @@ class AuthManager {
       return user;
     }
 
-    // 2. Check preset users
-    for (const preset of Object.values(PRESET_USERS)) {
-      if (
-        preset.name.toLowerCase() === q ||
-        preset.role.toLowerCase() === q ||
-        (preset.name.toLowerCase().includes(q) && q.length >= 3)
-      ) {
-        this.setCustomUser(preset);
-        return preset;
-      }
-    }
-
-    // 3. Dynamic new manager session
-    const initials = computeInitials(name.trim());
-    const user = {
-      id: "usr-" + name.trim().toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 10) + "-" + Date.now().toString(36),
-      name: name.trim(),
-      email: `${name.trim().toLowerCase().replace(/\s+/g, "")}@sangam.app`,
-      avatar: initials,
-      role: "manager",
-      department: "Event Organizer",
-      assignedGroupId: null
-    };
-
-    this.saveRegisteredUser({ ...user, password });
-    this.setCustomUser(user);
-    return user;
+    throw new Error("Account not found. Please sign up first.");
   }
 
   logout() {
@@ -214,7 +196,7 @@ class AuthManager {
     } catch (e) {
       console.warn("Could not clear stored session:", e);
     }
-    this.currentUser = PRESET_USERS.manager;
+    this.currentUser = null;
     this.notify();
   }
 
@@ -223,8 +205,8 @@ class AuthManager {
   }
 
   setRole(roleKey) {
-    if (PRESET_USERS[roleKey]) {
-      this.currentUser = PRESET_USERS[roleKey];
+    if (this.currentUser) {
+      this.currentUser.role = roleKey;
       this.persistCurrentUser();
       this.notify();
     }
@@ -236,11 +218,12 @@ class AuthManager {
     this.notify();
   }
 
-  // Update the operational group assignment of the active persona
-  // (used when the Manager reassigns the roster entry matching this user).
   setAssignedGroupId(groupId) {
-    this.currentUser = { ...this.currentUser, assignedGroupId: groupId || null };
-    this.notify();
+    if (this.currentUser) {
+      this.currentUser = { ...this.currentUser, assignedGroupId: groupId || null };
+      this.persistCurrentUser();
+      this.notify();
+    }
   }
 
   onUserChange(callback) {
@@ -261,92 +244,80 @@ class AuthManager {
   // --- Role-Based Access Control (RBAC) Permissions ---
 
   isManager() {
-    return this.currentUser.role === "manager";
+    return this.currentUser?.role === "manager";
   }
 
   isOverseer() {
-    return this.currentUser.role === "overseer";
+    return this.currentUser?.role === "overseer";
   }
 
   isLead() {
-    return this.currentUser.role === "lead";
+    return this.currentUser?.role === "lead";
   }
 
   isVolunteer() {
-    return this.currentUser.role === "volunteer";
+    return this.currentUser?.role === "volunteer";
   }
 
   canCreateProgramme() {
-    return this.currentUser.role === "manager";
+    return this.currentUser?.role === "manager";
   }
 
   canEditProgramme() {
-    return this.currentUser.role === "manager";
+    return this.currentUser?.role === "manager";
   }
 
   canAssignRoles() {
-    return this.currentUser.role === "manager";
+    return this.currentUser?.role === "manager";
   }
 
   canCreateGroup() {
-    return this.currentUser.role === "manager";
+    return this.currentUser?.role === "manager";
   }
 
   canInviteMembers() {
-    return this.currentUser.role === "manager";
+    return this.currentUser?.role === "manager";
   }
 
   canRunAIBriefing() {
-    return this.currentUser.role === "manager";
+    return this.currentUser?.role === "manager" || this.currentUser?.canCreateFirstEvent === true;
   }
 
-  // Live group assignment for lead/volunteer personas. Reads the roster entry
-  // matching the active persona so Manager reassignments take effect
-  // immediately; falls back to the preset's assignedGroupId.
   resolveAssignment() {
+    if (!this.currentUser) return null;
     try {
       const roster = JSON.parse(localStorage.getItem(STORAGE_KEYS.JOINED_PEOPLE) || "[]");
       const entry = Array.isArray(roster) && roster.find((p) => p.id === this.currentUser.id);
       if (entry && entry.groupId) return entry.groupId;
     } catch {
-      // storage unavailable: use preset fallback below
     }
     return this.currentUser.assignedGroupId || null;
   }
 
-  // Can the current user post a message in this specific group?
   canPostInGroup(groupId) {
+    if (!this.currentUser) return false;
     const role = this.currentUser.role;
-    if (role === "manager") return true; // Manager can chat in every group
-    if (role === "overseer") return false; // VIP Overseer is strictly read-only
+    if (role === "manager") return true;
+    if (role === "overseer") return false;
 
-    // Team leader or Volunteer can post only in their assigned department
     if (role === "lead" || role === "volunteer") {
-      // If group is general, everyone can post or read
       if (groupId === "grp-general") return true;
-      // Roster-driven assignment is authoritative when present (reflects
-      // Manager reassignments live, overriding seed fallbacks below).
       const assigned = this.resolveAssignment();
       if (assigned) return assigned === groupId;
-      // Legacy fallbacks when no roster/preset assignment exists.
-      if (groupId === "grp-food" && (this.currentUser.id === "usr-athul" || this.currentUser.id === "usr-athira")) return true;
-      if (groupId === "grp-stage" && this.currentUser.id === "usr-alex") return true;
       return false;
     }
     return false;
   }
 
-  // Can the current user view this group channel in their channel list?
   canViewGroup(groupId) {
+    if (!this.currentUser) return false;
     const role = this.currentUser.role;
     if (role === "manager" || role === "overseer" || role === "lead") {
-      return true; // Manager, VIP, and Team Leaders have cross-channel read access
+      return true;
     }
-    // Volunteer only views their assigned channel and general announcements
     if (groupId === "grp-general") return true;
     const assigned = this.resolveAssignment();
     if (assigned) return assigned === groupId;
-    if (groupId === "grp-food" && (this.currentUser.id === "usr-athul" || this.currentUser.id === "usr-athira")) return true;
     return false;
   }
 }

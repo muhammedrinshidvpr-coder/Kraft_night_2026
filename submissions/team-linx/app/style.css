@@ -456,13 +456,117 @@ span.pill { padding: 3px 10px; }
 .snapshot-extra { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 12px; }
 
 /* Roster and programs */
-.roster-list, .program-list { display: flex; flex-direction: column; gap: 9px; margin-top: 16px; }
-.roster-card, .program-card { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 12px 15px; box-shadow: var(--shadow); overflow-wrap: anywhere; }
+.roster-list, .program-list { display: flex; flex-direction: column; gap: 10px; margin-top: 16px; }
+.program-card { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 12px 15px; box-shadow: var(--shadow); overflow-wrap: anywhere; }
+.program-main { flex: 1; min-width: 0; }
+.program-name { font-weight: 500; font-size: 14px; }
+.program-sub { display: flex; gap: 7px; margin-top: 4px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
+
+/* Roster card styling with accordion inline assignment */
+.roster-card {
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  overflow-wrap: anywhere;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+  overflow: hidden;
+}
+.roster-card.is-clickable {
+  cursor: pointer;
+}
+.roster-card.is-clickable:hover {
+  border-color: #cbd5e1;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.05);
+}
+.roster-card.is-expanded {
+  border-color: var(--focus, #f472b6);
+  box-shadow: 0 0 0 1px var(--focus, #f472b6), 0 4px 14px rgba(244, 114, 182, 0.12);
+}
+.roster-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  width: 100%;
+}
 .roster-card .avatar { width: 40px; height: 40px; font-size: 13px; }
-.roster-main, .program-main { flex: 1; min-width: 0; }
-.roster-name, .program-name { font-weight: 500; font-size: 14px; }
-.roster-tags, .program-sub { display: flex; gap: 7px; margin-top: 4px; flex-wrap: wrap; font-family: var(--font-mono); font-size: 11.5px; color: var(--muted); }
-.roster-tags { font-family: var(--font-body); }
+.roster-main { flex: 1; min-width: 0; }
+.roster-name { font-weight: 500; font-size: 14px; }
+.roster-tags { display: flex; gap: 7px; margin-top: 4px; flex-wrap: wrap; font-family: var(--font-body); font-size: 11.5px; color: var(--muted); }
+.roster-action-hint {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.roster-edit-badge {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-sub);
+  background: var(--surface-2);
+  border: 1px solid var(--border-soft);
+  border-radius: 6px;
+  padding: 4px 9px;
+  transition: all 0.15s ease;
+}
+.roster-card.is-clickable:hover .roster-edit-badge {
+  background: #fff;
+  border-color: var(--border);
+  color: var(--text);
+}
+.roster-chevron {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--muted);
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), color 0.2s ease;
+  display: inline-block;
+}
+.roster-card.is-expanded .roster-chevron {
+  transform: rotate(90deg);
+  color: var(--text);
+}
+.roster-inline-editor {
+  border-top: 1px solid var(--border-soft);
+  background: var(--surface-2);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  animation: rosterSlideDown 0.18s ease-out;
+  cursor: default;
+}
+@keyframes rosterSlideDown {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.roster-editor-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+@media (max-width: 640px) {
+  .roster-editor-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.roster-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding-top: 2px;
+}
+.roster-editor-actions .roster-remove-btn {
+  margin-left: auto;
+}
+
 .remove-btn, .edit-btn { background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; min-height: 44px; color: var(--muted); font-size: 12px; cursor: pointer; transition: all 0.15s ease; }
 .remove-btn:hover { color: var(--live); border-color: var(--live); }
 .edit-btn { color: var(--text); }
@@ -1012,8 +1116,7 @@ body.ai-drawer-open .ai-fab {
   .timeline-body { padding: 12px; }
   .pin-row { gap: 6px; }
   .pin-digit { font-size: 18px; height: 50px; }
-  .program-actions { width: 100%; margin-left: 0; }
-  .roster-card { align-items: flex-start; }
+  .roster-card { align-items: stretch; }
 }
 @media (max-width: 600px) {
   #header-datetime { display: none; }

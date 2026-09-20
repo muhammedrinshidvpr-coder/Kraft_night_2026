@@ -10,7 +10,7 @@ import { getSupabase, isLive } from "./supabase-client.js";
 class ChatManager {
   constructor() {
     this.messages = this.loadMessages();
-    this.activeGroupId = "grp-food";
+    this.activeGroupId = "grp-general";
     this.listeners = [];
     this.realtimeChannel = null;
 
@@ -123,6 +123,12 @@ class ChatManager {
     return this.activeGroupId;
   }
 
+  setMessages(messagesMap = {}) {
+    this.messages = { ...messagesMap };
+    this.save();
+    this.notify();
+  }
+
   getMessages(groupId = this.activeGroupId) {
     return this.messages[groupId] || [];
   }
@@ -188,20 +194,6 @@ class ChatManager {
         }
       });
     }
-
-    // Optional demo auto-reply for evaluators if manager speaks in Food group
-    if (user.role === "manager" && this.activeGroupId === "grp-food" && text.toLowerCase().includes("status")) {
-      setTimeout(() => {
-        this.addSystemBotReply(
-          "grp-food",
-          "Athul (Team Leader)",
-          "lead",
-          "https://api.dicebear.com/7.x/bottts/svg?seed=Athul",
-          "Catering vehicle just passed the college gate. We are unloading boxes at the north dock now."
-        );
-      }, 1200);
-    }
-
     return msg;
   }
 

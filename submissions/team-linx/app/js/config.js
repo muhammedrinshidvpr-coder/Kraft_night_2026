@@ -33,280 +33,35 @@ export function disableLiveBackend() {
   localStorage.setItem("sangam_use_live", "false");
 }
 
-// Preset Evaluator Users matching the 4 Hierarchical Roles
-export const PRESET_USERS = {
-  manager: {
-    id: "usr-manager",
-    name: "Sarah Jenkins",
-    role: "manager",
-    roleLabel: "Event Manager (Full Admin)",
-    department: "Executive Committee",
-    avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Sarah"
-  },
-  overseer: {
-    id: "usr-imdad",
-    name: "Imdad M.",
-    role: "overseer",
-    roleLabel: "VIP / Principal Overseer (Read-Only)",
-    department: "Advisory Board",
-    avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Imdad"
-  },
-  lead: {
-    id: "usr-athul",
-    name: "Athul K.",
-    role: "lead",
-    roleLabel: "Team Leader (Food Coordination)",
-    department: "Food Coordination Group",
-    assignedGroupId: "grp-food",
-    avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Athul"
-  },
-  volunteer: {
-    id: "usr-athira",
-    name: "Athira S.",
-    role: "volunteer",
-    roleLabel: "Worker / Volunteer (Food Team)",
-    department: "Food Coordination Group",
-    assignedGroupId: "grp-food",
-    avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Athira"
-  }
+// Role definitions
+export const ROLES = {
+  manager: { role: "manager", label: "Event Manager (Full Admin)" },
+  overseer: { role: "overseer", label: "VIP / Overseer (Read-Only)" },
+  lead: { role: "lead", label: "Team Leader (Group Organiser)" },
+  volunteer: { role: "volunteer", label: "Worker / Volunteer" }
 };
 
-// Default Initial Event
-export const DEFAULT_EVENT = {
-  id: "evt-kraft-2026",
-  title: "Kraft Night 2026",
-  sixDigitCode: "482910",
-  venue: "Main Campus & Auditorium",
-  status: "active",
-  created_at: new Date().toISOString()
-};
+// Preset Evaluator Users (empty in production - no demo accounts)
+export const PRESET_USERS = {};
 
-// Operational Groups (e.g., Food group, Stage & Sound)
-export const DEFAULT_GROUPS = [
-  {
-    id: "grp-food",
-    name: "Food Coordination Group",
-    icon: "🥗",
-    description: "Catering, dining hall management, buffet counters, refreshments",
-    leaderId: "usr-athul",
-    leaderName: "Athul K.",
-    memberCount: 18
-  },
-  {
-    id: "grp-stage",
-    name: "Stage & Sound Team",
-    icon: "🔊",
-    description: "Audio setup, cordless mics, lighting matrix, backstage coordination",
-    leaderId: "usr-safti",
-    leaderName: "Safti M.",
-    memberCount: 12
-  },
-  {
-    id: "grp-vip",
-    name: "VIP Protocol & Hospitality",
-    icon: "👑",
-    description: "Principal, chief guest reception, escort, executive seating",
-    leaderId: "usr-aravind",
-    leaderName: "Aravind Menon",
-    memberCount: 6
-  },
-  {
+// Clean defaults for fresh event creation
+export const DEFAULT_EVENT = null;
+export const DEFAULT_GROUPS = [];
+export const DEFAULT_JOINED_PEOPLE = [];
+export const DEFAULT_PROGRAMMES = [];
+export const DEFAULT_MESSAGES = {};
+
+export function createDefaultGeneralGroup(leaderId = "usr-manager", leaderName = "Event Manager") {
+  return {
     id: "grp-general",
     name: "General Announcements",
     icon: "📢",
     description: "Global broadcasts and inter-departmental notices",
-    leaderId: "usr-manager",
-    leaderName: "Sarah Jenkins",
-    memberCount: 36
-  }
-];
-
-// Joined People Roster (From 6-digit Code entry)
-export const DEFAULT_JOINED_PEOPLE = [
-  {
-    id: "usr-athul",
-    name: "Athul K.",
-    email: "athul.food@kraft.org",
-    role: "lead",
-    roleBadge: "Team Leader",
-    groupId: "grp-food",
-    groupName: "Food Coordination Group",
-    status: "active",
-    joinedAt: "17:15"
-  },
-  {
-    id: "usr-athira",
-    name: "Athira S.",
-    email: "athira.vol@kraft.org",
-    role: "volunteer",
-    roleBadge: "Volunteer",
-    groupId: "grp-food",
-    groupName: "Food Coordination Group",
-    status: "active",
-    joinedAt: "17:18"
-  },
-  {
-    id: "usr-imdad",
-    name: "Imdad M.",
-    email: "imdad.principal@college.edu",
-    role: "overseer",
-    roleBadge: "VIP Overseer (Principal)",
-    groupId: "grp-vip",
-    groupName: "VIP Protocol & Hospitality",
-    status: "active",
-    joinedAt: "17:05"
-  },
-  {
-    id: "usr-alex",
-    name: "Alex Ramirez",
-    email: "alex.logistics@kraft.org",
-    role: "volunteer",
-    roleBadge: "Volunteer",
-    groupId: "grp-stage",
-    groupName: "Stage & Sound Team",
-    status: "active",
-    joinedAt: "17:22"
-  },
-  {
-    id: "usr-newbie",
-    name: "Devanand P.",
-    email: "devanand@student.edu",
-    role: "volunteer",
-    roleBadge: "Awaiting Assignment",
-    groupId: null,
-    groupName: "Unassigned",
-    status: "pending",
-    joinedAt: "Just now"
-  }
-];
-
-// Scheduled Programmes Timeline
-export const DEFAULT_PROGRAMMES = [
-  {
-    id: "prog-1",
-    title: "Inauguration & Lighting Ceremony",
-    description: "Welcome address by Student Convener, lamp lighting by Principal & Dignitaries.",
-    startTime: "18:00",
-    endTime: "19:15",
-    venue: "Main Auditorium Stage 1",
-    status: "completed",
-    leadGroup: "VIP Protocol & Hospitality"
-  },
-  {
-    id: "prog-2",
-    title: "Cultural Night & Live Bands",
-    description: "Battle of the bands, classical fusion dance, student comedy sketch.",
-    startTime: "19:30",
-    endTime: "21:00",
-    venue: "Open Air Amphitheater",
-    status: "in_progress",
-    leadGroup: "Stage & Sound Team"
-  },
-  {
-    id: "prog-3",
-    title: "Grand Banquet & Dinner Coordination",
-    description: "Buffet service open for 1,200 delegates and student attendees.",
-    startTime: "21:00",
-    endTime: "22:30",
-    venue: "Dining Hall & Food Court",
-    status: "scheduled",
-    leadGroup: "Food Coordination Group"
-  },
-  {
-    id: "prog-4",
-    title: "Awards & Valedictory Ceremony",
-    description: "Hackathon prize distribution, mentor felicitations & closing remarks.",
-    startTime: "22:30",
-    endTime: "23:45",
-    venue: "Main Auditorium Stage 1",
-    status: "scheduled",
-    leadGroup: "General Coordination"
-  }
-];
-
-// In-App Chat Messages per Group
-export const DEFAULT_MESSAGES = {
-  "grp-food": [
-    {
-      id: "msg-1",
-      senderId: "usr-manager",
-      senderName: "Sarah (Manager)",
-      senderRole: "manager",
-      text: "Morning team! Status on catering delivery? @Athul",
-      time: "10:31",
-      avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Sarah"
-    },
-    {
-      id: "msg-2",
-      senderId: "usr-athul",
-      senderName: "Athul (Team Leader)",
-      senderRole: "lead",
-      text: "On it, Sarah. Just confirmed departure from the venue. ETA 20 mins.",
-      time: "10:32",
-      avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Athul"
-    },
-    {
-      id: "msg-3",
-      senderId: "usr-athira",
-      senderName: "Athira (Volunteer)",
-      senderRole: "volunteer",
-      text: "Buffet tables are sanitized and serving trays are ready at Hall B.",
-      time: "10:33",
-      avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Athira"
-    },
-    {
-      id: "msg-4",
-      senderId: "usr-manager",
-      senderName: "Sarah (Manager)",
-      senderRole: "manager",
-      text: "Great work! Ensure extra vegetarian plates are allocated for the VIP guest lounge.",
-      time: "10:35",
-      avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Sarah"
-    }
-  ],
-  "grp-stage": [
-    {
-      id: "msg-10",
-      senderId: "usr-alex",
-      senderName: "Alex (Logistics)",
-      senderRole: "volunteer",
-      text: "Loading dock is clear and sound consoles are connected. Audio check starting.",
-      time: "10:33",
-      avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Alex"
-    },
-    {
-      id: "msg-11",
-      senderId: "usr-manager",
-      senderName: "Sarah (Manager)",
-      senderRole: "manager",
-      text: "Keep mics 3 & 4 reserved for the Principal during the Inauguration at 18:00.",
-      time: "10:36",
-      avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Sarah"
-    }
-  ],
-  "grp-vip": [
-    {
-      id: "msg-20",
-      senderId: "usr-manager",
-      senderName: "Sarah (Manager)",
-      senderRole: "manager",
-      text: "Welcome Principal Imdad Sir. You have full read-only oversight across all schedules and groups.",
-      time: "10:40",
-      avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Sarah"
-    }
-  ],
-  "grp-general": [
-    {
-      id: "msg-30",
-      senderId: "usr-manager",
-      senderName: "Sarah (Manager)",
-      senderRole: "manager",
-      text: "📢 All teams: Event starts promptly at 18:00. Please ensure all station leads are in position by 17:30.",
-      time: "10:45",
-      avatar: "https://api.dicebear.com/7.x/bottts/svg?seed=Sarah"
-    }
-  ]
-};
+    leaderId: leaderId,
+    leaderName: leaderName,
+    memberCount: 1
+  };
+}
 
 // Storage Key Constants
 export const STORAGE_KEYS = {
@@ -330,13 +85,37 @@ export function getLocalState() {
     }
   };
 
+  // Auto-clear legacy demo cache if old 'Kraft Night 2026' demo data is detected
+  try {
+    const rawEv = localStorage.getItem(STORAGE_KEYS.CURRENT_EVENT);
+    if (rawEv) {
+      const ev = JSON.parse(rawEv);
+      if (ev && (ev.id === "evt-kraft-2026" || (typeof ev.title === "string" && ev.title.includes("Kraft Night")))) {
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_EVENT);
+        localStorage.removeItem(STORAGE_KEYS.PROGRAMMES);
+        localStorage.removeItem(STORAGE_KEYS.GROUPS);
+        localStorage.removeItem(STORAGE_KEYS.JOINED_PEOPLE);
+        localStorage.removeItem(STORAGE_KEYS.MESSAGES);
+      }
+    }
+    const rawUser = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
+    if (rawUser) {
+      const cu = JSON.parse(rawUser);
+      if (cu && (cu.id === "usr-manager" || cu.name === "Sarah Jenkins")) {
+        localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+      }
+    }
+  } catch (e) {
+    console.warn("Legacy cache check error:", e);
+  }
+
   return {
-    currentUser: get(STORAGE_KEYS.CURRENT_USER, PRESET_USERS.manager),
-    currentEvent: get(STORAGE_KEYS.CURRENT_EVENT, DEFAULT_EVENT),
-    programmes: get(STORAGE_KEYS.PROGRAMMES, DEFAULT_PROGRAMMES),
-    groups: get(STORAGE_KEYS.GROUPS, DEFAULT_GROUPS),
-    joinedPeople: get(STORAGE_KEYS.JOINED_PEOPLE, DEFAULT_JOINED_PEOPLE),
-    messages: get(STORAGE_KEYS.MESSAGES, DEFAULT_MESSAGES),
+    currentUser: get(STORAGE_KEYS.CURRENT_USER, null),
+    currentEvent: get(STORAGE_KEYS.CURRENT_EVENT, null),
+    programmes: get(STORAGE_KEYS.PROGRAMMES, []),
+    groups: get(STORAGE_KEYS.GROUPS, []),
+    joinedPeople: get(STORAGE_KEYS.JOINED_PEOPLE, []),
+    messages: get(STORAGE_KEYS.MESSAGES, {}),
     activeView: localStorage.getItem(STORAGE_KEYS.ACTIVE_VIEW) || "landing"
   };
 }
@@ -344,7 +123,11 @@ export function getLocalState() {
 export function saveLocalState(state) {
   try {
     if (state.currentUser) localStorage.setItem(STORAGE_KEYS.CURRENT_USER, JSON.stringify(state.currentUser));
+    else localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
+
     if (state.currentEvent) localStorage.setItem(STORAGE_KEYS.CURRENT_EVENT, JSON.stringify(state.currentEvent));
+    else localStorage.removeItem(STORAGE_KEYS.CURRENT_EVENT);
+
     if (state.programmes) localStorage.setItem(STORAGE_KEYS.PROGRAMMES, JSON.stringify(state.programmes));
     if (state.groups) localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(state.groups));
     if (state.joinedPeople) localStorage.setItem(STORAGE_KEYS.JOINED_PEOPLE, JSON.stringify(state.joinedPeople));
@@ -356,6 +139,7 @@ export function saveLocalState(state) {
 }
 
 export function resetDemoState() {
+  localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
   localStorage.removeItem(STORAGE_KEYS.CURRENT_EVENT);
   localStorage.removeItem(STORAGE_KEYS.PROGRAMMES);
   localStorage.removeItem(STORAGE_KEYS.GROUPS);
@@ -364,3 +148,4 @@ export function resetDemoState() {
   localStorage.removeItem(STORAGE_KEYS.ACTIVE_VIEW);
   location.reload();
 }
+export const resetAppState = resetDemoState;

@@ -83,7 +83,7 @@ the `ai-coordinator` Edge Function with an authenticated Supabase session.
 2. Copy key starting with `AIza...`.
 3. Restrict it to the Generative Language API. Do not use an HTTP-referrer
    restriction because the key is used server-to-server by the Edge Function.
-4. The Edge Function reads `GEMINI_MODEL` (default: `gemini-1.5-flash`). Set a
+4. The Edge Function reads `GEMINI_MODEL` (default: `gemini-2.5-flash`). Set a
    supported Flash model explicitly when deploying so model upgrades do not
    require browser changes.
 
@@ -92,7 +92,7 @@ Test directly (PowerShell):
 ```powershell
 $key="AIzaYOURKEY"
 Invoke-RestMethod -Method Post -ContentType "application/json" `
- -Uri "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=$key" `
+  -Uri "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=$key" `
  -Body '{"contents":[{"parts":[{"text":"Say OK"}]}]}'
 ```
 
@@ -124,7 +124,7 @@ Set secrets (these live server-side only):
 
 ```powershell
 supabase secrets set GEMINI_API_KEY="AIzaYOURKEY"
-supabase secrets set GEMINI_MODEL="gemini-1.5-flash"
+supabase secrets set GEMINI_MODEL="gemini-2.5-flash"
 supabase secrets set SENDGRID_API_KEY="SG.xxxxx"
 supabase secrets set SENDGRID_SENDER_EMAIL="organizer@yourdomain.com"
 supabase secrets list

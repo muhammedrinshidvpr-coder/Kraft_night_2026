@@ -27,14 +27,18 @@ Deno.test("plan_event persists only validated Gemini blueprints", async () => {
   let createdEvents = 0;
   let applyCalls = 0;
   let returnMalformedBlueprint = false;
-  let managerMembership = true;
+  let profileRole = "manager";
+  let hasEventMembership = false;
   globalThis.fetch = (async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/auth/v1/user")) {
       return Response.json({ id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa" });
     }
     if (url.includes("/rest/v1/profiles")) {
-      return Response.json(managerMembership ? [{ event_id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" }] : []);
+      return Response.json([{ id: "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", role: profileRole }]);
+    }
+    if (url.includes("/rest/v1/event_members")) {
+      return Response.json(hasEventMembership ? [{ id: "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb" }] : []);
     }
     if (url.includes("generativelanguage.googleapis.com")) {
       const blueprint = returnMalformedBlueprint
@@ -120,7 +124,8 @@ Deno.test("plan_event persists only validated Gemini blueprints", async () => {
     assert(appliedBody.event.event_id === "dddddddd-dddd-dddd-dddd-dddddddddddd", "expected the atomic RPC event result");
     assert(applyCalls === 1 && createdEvents === 0, "apply must use the single atomic RPC rather than direct client writes");
 
-    managerMembership = false;
+    profileRole = "volunteer";
+    hasEventMembership = true;
     const nonManagerResponse = await handleRequest(new Request("https://function.test", {
       method: "POST",
       headers: { Authorization: "Bearer user-token", "Content-Type": "application/json" },

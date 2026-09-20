@@ -111,7 +111,7 @@ class SangamAICoordinator {
     if (route.route === "local") {
       return { source: "local", label: "Live event data", text: getLocalResponse(prompt, context), route };
     }
-    if (auth.getCurrentUser()?.role !== "manager") {
+    if (!auth.canRunAIBriefing()) {
       throw new Error("Only event managers can use Gemini planning.");
     }
 

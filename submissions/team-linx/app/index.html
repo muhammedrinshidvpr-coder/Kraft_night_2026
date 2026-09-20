@@ -130,7 +130,7 @@
         <h1 class="entry-display gateway-title" id="gateway-title">Event Collaboration Gateway</h1>
         <p class="entry-sub">Choose an action to proceed into the command workspace.</p>
         <div class="gateway-user-tag" id="gateway-active-user-badge">
-          <span>Signed in as <strong id="gateway-active-user-name">Sarah Jenkins</strong></span>
+          <span>Signed in as <strong id="gateway-active-user-name">—</strong></span>
         </div>
       </div>
       <div class="gateway-grid">
@@ -141,7 +141,7 @@
           <form id="create-event-form" class="stack-form">
             <div class="field">
               <label for="input-event-title">Event title</label>
-              <input type="text" id="input-event-title" required placeholder="e.g. Kraft Night 2026" value="Kraft Night 2026" autocomplete="off">
+              <input type="text" id="input-event-title" required placeholder="e.g. Annual Tech Symposium" autocomplete="off">
             </div>
             <button type="submit" class="btn-dark">Create Event &amp; Become Manager</button>
             <button type="button" class="btn-light" id="btn-plan-event">Plan with Gemini</button>
@@ -156,12 +156,12 @@
             <div class="field">
               <label id="pin-label">6-digit event code</label>
               <div class="pin-row" id="pin-input-group" role="group" aria-labelledby="pin-label">
-                <input type="text" maxlength="1" class="pin-digit" value="4" aria-label="Digit 1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
-                <input type="text" maxlength="1" class="pin-digit" value="8" aria-label="Digit 2" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
-                <input type="text" maxlength="1" class="pin-digit" value="2" aria-label="Digit 3" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
-                <input type="text" maxlength="1" class="pin-digit" value="9" aria-label="Digit 4" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
-                <input type="text" maxlength="1" class="pin-digit" value="1" aria-label="Digit 5" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
-                <input type="text" maxlength="1" class="pin-digit" value="0" aria-label="Digit 6" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="done">
+                <input type="text" maxlength="1" class="pin-digit" value="" aria-label="Digit 1" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
+                <input type="text" maxlength="1" class="pin-digit" value="" aria-label="Digit 2" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
+                <input type="text" maxlength="1" class="pin-digit" value="" aria-label="Digit 3" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
+                <input type="text" maxlength="1" class="pin-digit" value="" aria-label="Digit 4" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
+                <input type="text" maxlength="1" class="pin-digit" value="" aria-label="Digit 5" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="next">
+                <input type="text" maxlength="1" class="pin-digit" value="" aria-label="Digit 6" inputmode="numeric" pattern="[0-9]*" autocomplete="one-time-code" enterkeyhint="done">
               </div>
             </div>
             <button type="submit" class="btn-dark">Join Event Lobby</button>
@@ -187,8 +187,8 @@
         </div>
 
         <div class="sidebar-event">
-          <p class="sidebar-event-title" id="side-event-title">Kraft Night 2026</p>
-          <p class="sidebar-event-sub" id="side-event-code">PIN: 482910</p>
+          <p class="sidebar-event-title" id="side-event-title">No Active Event</p>
+          <p class="sidebar-event-sub" id="side-event-code">PIN: —</p>
         </div>
 
         <nav class="sidebar-nav" aria-label="Workspace pages">
@@ -201,10 +201,10 @@
 
         <div class="sidebar-footer">
           <button class="profile-btn" id="profile-btn" type="button" aria-haspopup="dialog" aria-expanded="false" aria-controls="profile-popover">
-            <span class="avatar" id="user-avatar-initials" aria-hidden="true">SJ</span>
+            <span class="avatar" id="user-avatar-initials" aria-hidden="true">—</span>
             <span class="profile-text">
-              <span class="profile-name" id="user-name-display">Sarah Jenkins</span>
-              <span class="profile-sub" id="user-dept-display">Executive Committee</span>
+              <span class="profile-name" id="user-name-display">—</span>
+              <span class="profile-sub" id="user-dept-display">—</span>
             </span>
             <span class="role-tag role-manager" id="user-role-badge">MANAGER</span>
           </button>
@@ -235,7 +235,7 @@
                 <div class="card-head">
                   <div>
                     <h2 class="card-title" id="dashboard-schedule-title">Today's Schedule</h2>
-                    <p class="card-sub" id="dashboard-schedule-sub">Kraft Night 2026 · Live programme timeline</p>
+                    <p class="card-sub" id="dashboard-schedule-sub">Live programme timeline</p>
                   </div>
                   <span class="live-badge" id="dashboard-live-badge"><span class="live-dot" aria-hidden="true"></span> Live now</span>
                 </div>
@@ -276,36 +276,6 @@
                 <span>✉ Invite Members</span>
               </button>
             </div>
-            <section class="card narrow" aria-labelledby="assign-form-title">
-              <p class="section-label" id="assign-form-title">Add / update member</p>
-              <form id="form-assign-inline" class="stack-form">
-                <div class="form-grid-2">
-                  <div class="field">
-                    <label for="assign-new-name">Full name <span class="muted">(new member)</span></label>
-                    <input type="text" id="assign-new-name" placeholder="e.g. Alex Johnson" autocomplete="off">
-                  </div>
-                  <div class="field">
-                    <label for="assign-member-select">Existing member</label>
-                    <select id="assign-member-select"></select>
-                  </div>
-                </div>
-                <div class="field">
-                  <label for="assign-role-select-inline">Role</label>
-                  <select id="assign-role-select-inline">
-                    <option value="volunteer">Worker / Volunteer</option>
-                    <option value="lead">Team Leader (Group Organiser)</option>
-                    <option value="overseer">VIP / Overseer (Read-Only Principal)</option>
-                    <option value="manager">Event Manager (Full Admin)</option>
-                  </select>
-                </div>
-                <div class="field">
-                  <label for="assign-group-select-inline">Operational group</label>
-                  <select id="assign-group-select-inline"></select>
-                </div>
-                <p class="form-hint" id="assign-form-hint">Only the Event Manager can assign roles and groups.</p>
-                <button type="submit" class="btn-dark" id="assign-submit-btn">Add Member</button>
-              </form>
-            </section>
             <div class="roster-list" id="joined-people-list" role="list" aria-label="Joined people roster"></div>
           </div>
 
@@ -372,12 +342,12 @@
             <h2 class="page-title">About Event</h2>
             <p class="page-sub">Active event details and operational information.</p>
             <section class="card narrow about-hero" aria-labelledby="about-event-title">
-              <h2 class="about-title" id="about-event-title">Kraft Night 2026</h2>
+              <h2 class="about-title" id="about-event-title">Event Overview</h2>
               <p class="card-sub" id="about-event-sub">Unified event command center</p>
               <dl class="about-grid">
-                <div><dt>Event</dt><dd id="about-field-title">Kraft Night 2026</dd></div>
-                <div><dt>Venue</dt><dd id="about-field-venue">Main Campus &amp; Auditorium</dd></div>
-                <div><dt>Access PIN</dt><dd id="about-field-pin">482910</dd></div>
+                <div><dt>Event</dt><dd id="about-field-title">—</dd></div>
+                <div><dt>Venue</dt><dd id="about-field-venue">—</dd></div>
+                <div><dt>Access PIN</dt><dd id="about-field-pin">—</dd></div>
                 <div><dt>Status</dt><dd id="about-field-status">active</dd></div>
                 <div><dt>Programs</dt><dd id="about-field-programs">0 scheduled</dd></div>
                 <div><dt>Members</dt><dd id="about-field-members">0 joined</dd></div>
@@ -441,13 +411,13 @@
       <div class="popover-section">
         <p class="section-label">Signed in as</p>
         <div class="popover-user-card">
-          <span class="avatar popover-avatar" id="popover-user-avatar" aria-hidden="true">SJ</span>
+          <span class="avatar popover-avatar" id="popover-user-avatar" aria-hidden="true">—</span>
           <div class="popover-user-details">
             <div class="popover-user-header">
-              <strong class="popover-user-name" id="popover-user-name">Sarah Jenkins</strong>
+              <strong class="popover-user-name" id="popover-user-name">—</strong>
               <span class="role-tag role-manager" id="popover-user-role-badge">MANAGER</span>
             </div>
-            <p class="popover-user-dept" id="popover-user-dept">Executive Committee</p>
+            <p class="popover-user-dept" id="popover-user-dept">—</p>
           </div>
         </div>
       </div>
@@ -459,14 +429,14 @@
           <div class="popover-event-head">
             <span class="popover-event-icon" aria-hidden="true">🎪</span>
             <div class="popover-event-info">
-              <strong class="popover-event-name" id="popover-event-title">Kraft Night 2026</strong>
+              <strong class="popover-event-name" id="popover-event-title">—</strong>
               <span class="popover-event-status">Live Workspace</span>
             </div>
           </div>
           <div class="popover-pin-box">
             <div class="popover-pin-meta">
               <span class="popover-pin-label">EVENT PIN</span>
-              <strong class="popover-pin-number" id="nav-code-display">482910</strong>
+              <strong class="popover-pin-number" id="nav-code-display">—</strong>
             </div>
             <button class="btn-light btn-small btn-copy-pin" id="btn-copy-code" type="button" aria-label="Copy event PIN">
               <span id="btn-copy-label">Copy</span>
@@ -474,33 +444,6 @@
           </div>
           <p class="popover-helper-text">Share this 6-digit PIN with team members to let them join this event lobby.</p>
           <button class="btn-light btn-small popover-change-btn" id="btn-side-back-gateway" type="button">← Change / Find Event</button>
-        </div>
-      </div>
-
-      <!-- Section 3: Switch Persona (RBAC Preview) -->
-      <div class="popover-section">
-        <div class="popover-section-header-flex">
-          <p class="section-label">Switch Persona</p>
-          <span class="rbac-pill">RBAC Preview</span>
-        </div>
-        <p class="popover-helper-text">Preview interface permissions under different organizational roles:</p>
-        <div class="role-list" role="group" aria-label="Switch evaluator role">
-          <button class="role-btn" type="button" data-role="manager">
-            <span class="role-title">Manager</span>
-            <span class="role-desc">Full Admin</span>
-          </button>
-          <button class="role-btn" type="button" data-role="overseer">
-            <span class="role-title">VIP Overseer</span>
-            <span class="role-desc">Read-Only</span>
-          </button>
-          <button class="role-btn" type="button" data-role="lead">
-            <span class="role-title">Team Leader</span>
-            <span class="role-desc">Food Lead</span>
-          </button>
-          <button class="role-btn" type="button" data-role="volunteer">
-            <span class="role-title">Volunteer</span>
-            <span class="role-desc">Worker</span>
-          </button>
         </div>
       </div>
 

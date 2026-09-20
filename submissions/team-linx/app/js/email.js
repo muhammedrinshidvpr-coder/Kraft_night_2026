@@ -3,7 +3,7 @@
 // Team LINX - Kraft Night 2026
 // ==============================================================================
 
-import { CONFIG } from "./config.js";
+import { CONFIG, STORAGE_KEYS } from "./config.js";
 
 class EmailService {
   constructor() {
@@ -12,12 +12,21 @@ class EmailService {
   }
 
   async sendInvitation({ email, name, role, department }) {
+    let eventName = "Sangam Event";
+    try {
+      const stored = localStorage.getItem(STORAGE_KEYS.CURRENT_EVENT);
+      if (stored) {
+        const ev = JSON.parse(stored);
+        if (ev?.title) eventName = ev.title;
+      }
+    } catch {}
+
     const payload = {
       toEmail: email,
       recipientName: name || "Team Member",
       type: "invitation",
       details: {
-        eventName: "Kraft Night 2026",
+        eventName: eventName,
         role: role,
         department: department,
         inviteUrl: window.location.href

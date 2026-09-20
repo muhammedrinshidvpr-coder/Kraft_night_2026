@@ -13,7 +13,7 @@
 | **Frontend Core** | HTML5 Semantic Elements, Modern CSS3, Vanilla JavaScript (ES6+ Modules) | Zero bundlers, zero framework bloat, sub-100ms cold start, portable across any static server. |
 | **Styling System** | Custom CSS3 Custom Properties (Design Tokens), CSS Grid, Flexbox, light workspace system | Pixel-level control, fluid responsive layouts with mobile drawers, accessible focus and reduced-motion support, no Tailwind/Bootstrap. |
 | **Backend & Database** | Supabase (PostgreSQL 15, Supabase Realtime WebSockets, Supabase Auth) | Managed relational database, low-latency WebSocket pub/sub for in-app chat, and robust Row-Level Security (RLS). |
-| **AI Intelligence** | Google AI JavaScript SDK / Gemini API (`gemini-1.5-flash` / `gemini-2.0-flash`) | Fast inference, 1M+ context window, excellent structured output generation for event briefings and timeline queries. |
+| **AI Intelligence** | Google Gemini API (`gemini-2.5-flash`) | Fast structured-output generation for event blueprints and operational planning. |
 | **Email Service** | SendGrid v3 Mail API | Automated transactional email invites for external participants with the 6-digit event code. |
 
 ---

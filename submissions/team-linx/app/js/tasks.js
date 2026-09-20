@@ -53,6 +53,11 @@ class TaskManager {
     }
   }
 
+  setProgrammes(list = []) {
+    this.programmes = Array.isArray(list) ? [...list] : [];
+    this.saveAndNotify("Programmes reset");
+  }
+
   async initLiveBackend() {
     if (!isLive()) return;
 

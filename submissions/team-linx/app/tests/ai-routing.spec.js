@@ -8,7 +8,15 @@ test("factual manager prompts use live data without an AI request", async ({ pag
 
   await page.goto("http://localhost:3456/index.html");
   await page.waitForFunction(() => Boolean(window.sangamApp));
-  await page.evaluate(() => window.sangamApp.switchView("dashboard"));
+  await page.evaluate(() => {
+    window.sangamApp.auth.setCustomUser({ id: "usr-manager", name: "Sarah Jenkins", role: "manager" });
+    window.sangamApp.state.currentEvent = { id: "evt-test", title: "Kraft Night 2026", sixDigitCode: "482910", venue: "Main Auditorium" };
+    window.sangamApp.state.groups = [
+      { id: "grp-stage", name: "Stage & Audio", leaderName: "Athul Krishna" },
+      { id: "grp-food", name: "Food Coordination", leaderName: "Sonia Chen" }
+    ];
+    window.sangamApp.switchView("dashboard", { skipGuard: true });
+  });
   await page.getByRole("button", { name: "Open AI Briefing" }).click();
   await page.locator("#gemini-prompt-input").fill("List the operational teams and leaders");
   await page.locator("#gemini-input-form").press("Enter");

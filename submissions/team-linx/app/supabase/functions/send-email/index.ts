@@ -25,7 +25,7 @@ serve(async (req) => {
     let htmlContent = "";
 
     if (type === "invitation") {
-      subject = `[Sangam] You're invited to join ${details.eventName || "Kraft Night 2026"}`;
+      subject = `[Sangam] You're invited to join ${details.eventName || "Sangam Event"}`;
       htmlContent = `
         <div style="font-family: Arial, sans-serif; padding: 20px; color: #1e293b;">
           <h2 style="color: #6366f1;">Welcome to Sangam (സംഗമം)</h2>

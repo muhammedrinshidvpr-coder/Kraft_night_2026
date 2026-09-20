@@ -3,7 +3,7 @@
 // Team LINX - Kraft Night 2026
 // =============================================================================
 
-import { getLocalState, saveLocalState } from "./config.js";
+import { getLocalState, saveLocalState, createDefaultGeneralGroup } from "./config.js";
 import { auth } from "./auth.js";
 import { taskManager } from "./tasks.js";
 import { chatManager } from "./chat.js";
@@ -61,6 +61,7 @@ class AppController {
   constructor() {
     this.auth = auth;
     this.chatManager = chatManager;
+    this.taskManager = taskManager;
     this.state = getLocalState();
     this.currentView = normalizeView(this.state.activeView || "landing");
     this.selectedProgramId = null;
@@ -70,6 +71,7 @@ class AppController {
     this.hasScrolledInitialTimeline = false;
     this.userIsScrollingTimeline = false;
     this.timelineScrollTimeout = null;
+    this.activeAssignMemberId = null;
   }
 
   init() {
@@ -358,8 +360,8 @@ class AppController {
   updateGatewayUserDisplay() {
     const user = auth.getCurrentUser();
     const nameEl = document.getElementById("gateway-active-user-name");
-    if (nameEl && user) {
-      nameEl.textContent = `${user.name} (${(user.role || "manager").toUpperCase()})`;
+    if (nameEl) {
+      nameEl.textContent = user ? `${user.name} (${(user.role || "manager").toUpperCase()})` : "—";
     }
   }
 
@@ -739,25 +741,76 @@ class AppController {
       createForm.addEventListener("submit", (e) => {
         e.preventDefault();
         const input = document.getElementById("input-event-title");
-        const title = (input?.value || "").trim() || "Kraft Night 2026";
+        const title = (input?.value || "").trim();
+        if (!title) {
+          alert("Please enter an event title.");
+          return;
+        }
         const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
-        const currentUser = auth.getCurrentUser();
-        this.state.currentEvent = {
+        let currentUser = auth.getCurrentUser();
+        if (!currentUser) {
+          this.switchView("login");
+          return;
+        }
+
+        if (currentUser.role !== "manager") {
+          currentUser = { ...currentUser, role: "manager", department: "Event Organizer" };
+          auth.setCustomUser(currentUser);
+        }
+
+        const newEvent = {
           id: "evt-" + Date.now(),
           title,
           sixDigitCode: randomCode,
-          venue: "Main Auditorium & Campus",
+          venue: "TBD",
           status: "active",
           created_at: new Date().toISOString(),
-          manager_id: currentUser ? currentUser.id : "usr-manager",
-          manager_name: currentUser ? currentUser.name : "Sarah Jenkins",
+          manager_id: currentUser.id,
+          manager_name: currentUser.name,
         };
-        if (currentUser && currentUser.role !== "manager") {
-          auth.setCustomUser({ ...currentUser, role: "manager", department: "Event Organizer" });
+
+        const generalGroup = createDefaultGeneralGroup(currentUser.id, currentUser.name);
+
+        const managerMember = {
+          id: currentUser.id,
+          name: currentUser.name,
+          email: currentUser.email || `${currentUser.name.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@sangam.app`,
+          role: "manager",
+          roleBadge: "Event Manager",
+          groupId: generalGroup.id,
+          groupName: generalGroup.name,
+          status: "active",
+          joinedAt: "Organizer",
+          avatar: currentUser.avatar
+        };
+
+        this.state.currentEvent = newEvent;
+        this.state.programmes = [];
+        this.state.groups = [generalGroup];
+        this.state.joinedPeople = [managerMember];
+        this.state.messages = { [generalGroup.id]: [] };
+
+        taskManager.setProgrammes([]);
+        chatManager.setActiveGroup(generalGroup.id);
+        chatManager.setMessages({ [generalGroup.id]: [] });
+
+        try {
+          const allEvents = JSON.parse(localStorage.getItem("sangam_all_events") || "[]");
+          allEvents.push(newEvent);
+          localStorage.setItem("sangam_all_events", JSON.stringify(allEvents));
+        } catch (err) {
+          console.warn("Could not save to sangam_all_events:", err);
         }
+
         this.syncRoleButtons();
         this.persistState();
         this.updateEventDisplay();
+        this.renderDashboard();
+        this.renderAssignRoles();
+        this.renderProgramsPage();
+        this.renderChatChannels();
+        this.renderAbout();
+        this.updateStats();
         this.switchView("dashboard");
       });
     }
@@ -832,14 +885,37 @@ class AppController {
           return;
         }
 
+        let foundEvent = null;
+        if (this.state.currentEvent && this.state.currentEvent.sixDigitCode === code) {
+          foundEvent = this.state.currentEvent;
+        } else {
+          try {
+            const allEvents = JSON.parse(localStorage.getItem("sangam_all_events") || "[]");
+            foundEvent = allEvents.find((ev) => ev.sixDigitCode === code);
+          } catch {}
+        }
+
+        if (!foundEvent && !this.state.currentEvent) {
+          if (alertEl) {
+            alertEl.textContent = `No active event found with code ${code}. Please check the PIN or create a new event.`;
+            alertEl.className = "entry-auth-alert error";
+            alertEl.hidden = false;
+          }
+          return;
+        }
+
+        if (foundEvent) {
+          this.state.currentEvent = foundEvent;
+        }
+
         const newAttendee = {
           id: currentUser.id,
           name: currentUser.name,
           email: currentUser.email || `${currentUser.name.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@sangam.app`,
           role: currentUser.role === "manager" ? "manager" : "volunteer",
-          roleBadge: currentUser.role === "manager" ? "Event Manager" : "Awaiting Assignment",
-          groupId: currentUser.assignedGroupId || null,
-          groupName: "Unassigned",
+          roleBadge: currentUser.role === "manager" ? "Event Manager" : "Volunteer",
+          groupId: currentUser.assignedGroupId || (this.state.groups[0]?.id || null),
+          groupName: this.state.groups[0]?.name || "General Announcements",
           status: "active",
           joinedAt: "Just now",
           avatar: currentUser.avatar
@@ -868,58 +944,6 @@ class AppController {
 
   // ---------------------------------------------------------- workspace forms
   bindWorkspaceForms() {
-    const assignForm = document.getElementById("form-assign-inline");
-    if (assignForm) {
-      assignForm.addEventListener("submit", (e) => {
-        e.preventDefault();
-        if (!auth.canAssignRoles()) {
-          alert("Permission Denied: Only the Event Manager can assign roles.");
-          return;
-        }
-        const nameInput = document.getElementById("assign-new-name");
-        const memberSelect = document.getElementById("assign-member-select");
-        const roleSelect = document.getElementById("assign-role-select-inline");
-        const groupSelect = document.getElementById("assign-group-select-inline");
-        const newName = (nameInput?.value || "").trim();
-        const role = roleSelect?.value || "volunteer";
-        const groupId = groupSelect?.value || "";
-        const group = this.state.groups.find((g) => g.id === groupId) || null;
-
-        if (newName) {
-          const person = {
-            id: "usr-" + Date.now(),
-            name: newName,
-            email: `${newName.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@kraft.org`,
-            role,
-            roleBadge: this.roleBadgeFor(role),
-            groupId: groupId || null,
-            groupName: group ? group.name : "Unassigned",
-            status: "active",
-            joinedAt: "Just now",
-          };
-          this.state.joinedPeople.unshift(person);
-          if (nameInput) nameInput.value = "";
-        } else if (memberSelect?.value) {
-          const person = this.state.joinedPeople.find((p) => p.id === memberSelect.value);
-          if (!person) return;
-          person.role = role;
-          person.roleBadge = this.roleBadgeFor(role);
-          person.groupId = groupId || null;
-          person.groupName = group ? group.name : "Unassigned";
-          // Keep live chat permissions in sync when the reassigned member
-          // is the currently active persona (e.g. Athul moved to Stage).
-          if (person.id === auth.getCurrentUser()?.id) auth.setAssignedGroupId(groupId || null);
-        } else {
-          alert("Enter a full name or select an existing member.");
-          return;
-        }
-        this.persistState();
-        this.renderAssignRoles();
-        this.renderDashboard();
-        this.renderAbout();
-      });
-    }
-
     const programForm = document.getElementById("form-create-program-inline");
     if (programForm) {
       programForm.addEventListener("submit", (e) => {
@@ -1210,65 +1234,155 @@ class AppController {
   }
 
   // ------------------------------------------------------------ assign roles
+  assignMemberRoleAndGroup(personId, role, groupId) {
+    const person = this.state.joinedPeople.find((p) => p.id === personId);
+    if (!person) return false;
+    const group = this.state.groups.find((g) => g.id === groupId) || null;
+    person.role = role;
+    person.roleBadge = this.roleBadgeFor(role);
+    person.groupId = groupId || null;
+    person.groupName = group ? group.name : "Unassigned";
+
+    // Keep live chat permissions in sync when the reassigned member
+    // is the currently active persona (e.g. Athul moved to Stage).
+    if (person.id === auth.getCurrentUser()?.id) {
+      auth.setAssignedGroupId(groupId || null);
+    }
+
+    this.persistState();
+    this.renderAssignRoles();
+    this.renderDashboard();
+    this.renderAbout();
+    this.updateStats();
+    return true;
+  }
+
   renderAssignRoles() {
-    const memberSelect = document.getElementById("assign-member-select");
-    const groupSelect = document.getElementById("assign-group-select-inline");
-    const roleSelect = document.getElementById("assign-role-select-inline");
-    const submit = document.getElementById("assign-submit-btn");
-    const hint = document.getElementById("assign-form-hint");
     const canAssign = auth.canAssignRoles();
-
-    if (memberSelect) {
-      const current = memberSelect.value;
-      memberSelect.innerHTML = '<option value="">Select a member to update</option>' +
-        this.state.joinedPeople.map((p) => `<option value="${esc(p.id)}">${esc(p.name)} — ${esc(p.roleBadge || p.role)}</option>`).join("");
-      if ([...memberSelect.options].some((o) => o.value === current)) memberSelect.value = current;
-    }
-    if (groupSelect) {
-      groupSelect.innerHTML = '<option value="">No group (General)</option>' +
-        this.state.groups.map((g) => `<option value="${esc(g.id)}">${esc(g.icon || "👥")} ${esc(g.name)}</option>`).join("");
-    }
-    ["assign-new-name", "assign-member-select", "assign-role-select-inline", "assign-group-select-inline"].forEach((id) => {
-      const el = document.getElementById(id);
-      if (el) el.disabled = !canAssign;
-    });
-    if (submit) {
-      submit.disabled = !canAssign;
-      submit.textContent = canAssign ? "Add Member" : "Manager only";
-    }
-    if (hint) hint.textContent = canAssign ? "New names create roster entries; selecting a member updates that entry." : "Only the Event Manager can assign roles and groups.";
-    if (roleSelect && !roleSelect.value) roleSelect.value = "volunteer";
-
     const list = document.getElementById("joined-people-list");
     if (!list) return;
     list.innerHTML = "";
-    if (this.state.joinedPeople.length === 0) {
+
+    if (!this.state.joinedPeople || this.state.joinedPeople.length === 0) {
       list.innerHTML = '<p class="empty">No members have joined yet.</p>';
       return;
     }
+
     this.state.joinedPeople.forEach((person) => {
+      const isExpanded = canAssign && this.activeAssignMemberId === person.id;
       const card = document.createElement("div");
-      card.className = "roster-card";
+      card.className = `roster-card ${canAssign ? "is-clickable" : ""} ${isExpanded ? "is-expanded" : ""}`;
       card.setAttribute("role", "listitem");
+      card.dataset.personId = person.id;
+
+      const groupOptions = [
+        '<option value="">No group (General)</option>',
+        ...this.state.groups.map(
+          (g) => `<option value="${esc(g.id)}" ${person.groupId === g.id ? "selected" : ""}>${esc(g.icon || "👥")} ${esc(g.name)}</option>`
+        ),
+      ].join("");
+
       card.innerHTML = `
-        <span class="avatar" style="color:${esc(colorFor(person.name))}">${esc(initialsFor(person.name))}</span>
-        <div class="roster-main">
-          <div class="roster-name">${esc(person.name)}</div>
-          <div class="roster-tags"><span class="pill neutral">${esc(person.roleBadge || person.role)}</span><span class="pill neutral">${esc(person.groupName || "Unassigned")}</span></div>
+        <div class="roster-header">
+          <span class="avatar" style="color:${esc(colorFor(person.name))}">${esc(initialsFor(person.name))}</span>
+          <div class="roster-main">
+            <div class="roster-name">${esc(person.name)}</div>
+            <div class="roster-tags">
+              <span class="pill neutral">${esc(person.roleBadge || this.roleBadgeFor(person.role))}</span>
+              <span class="pill neutral">${esc(person.groupName || "Unassigned")}</span>
+            </div>
+          </div>
+          ${canAssign ? `
+            <div class="roster-action-hint">
+              <span class="roster-edit-badge">${isExpanded ? "Close" : "Assign"}</span>
+              <span class="roster-chevron" aria-hidden="true">›</span>
+            </div>
+          ` : ""}
         </div>
-        ${canAssign ? `<button type="button" class="remove-btn" data-remove="${esc(person.id)}">Remove</button>` : ""}
+        ${isExpanded ? `
+          <div class="roster-inline-editor">
+            <div class="roster-editor-grid">
+              <div class="field">
+                <label for="assign-role-${esc(person.id)}">Role</label>
+                <select id="assign-role-${esc(person.id)}" class="roster-role-input">
+                  <option value="volunteer" ${person.role === "volunteer" ? "selected" : ""}>Worker / Volunteer</option>
+                  <option value="lead" ${person.role === "lead" ? "selected" : ""}>Team Leader (Group Organiser)</option>
+                  <option value="overseer" ${person.role === "overseer" ? "selected" : ""}>VIP / Overseer (Read-Only Principal)</option>
+                  <option value="manager" ${person.role === "manager" ? "selected" : ""}>Event Manager (Full Admin)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="assign-group-${esc(person.id)}">Operational group</label>
+                <select id="assign-group-${esc(person.id)}" class="roster-group-input">
+                  ${groupOptions}
+                </select>
+              </div>
+            </div>
+            <div class="roster-editor-actions">
+              <button type="button" class="btn-dark btn-small roster-save-btn">Save</button>
+              <button type="button" class="btn-light btn-small roster-cancel-btn">Cancel</button>
+              <button type="button" class="remove-btn roster-remove-btn" data-remove="${esc(person.id)}">Remove Member</button>
+            </div>
+          </div>
+        ` : ""}
       `;
-      const removeBtn = card.querySelector("[data-remove]");
-      if (removeBtn) {
-        removeBtn.addEventListener("click", () => {
-          this.state.joinedPeople = this.state.joinedPeople.filter((p) => p.id !== person.id);
-          this.persistState();
-          this.renderAssignRoles();
-          this.renderDashboard();
-          this.renderAbout();
-          this.updateStats();
-        });
+
+      if (canAssign) {
+        const header = card.querySelector(".roster-header");
+        if (header) {
+          header.addEventListener("click", () => {
+            this.activeAssignMemberId = this.activeAssignMemberId === person.id ? null : person.id;
+            this.renderAssignRoles();
+          });
+        }
+
+        if (isExpanded) {
+          const editor = card.querySelector(".roster-inline-editor");
+          if (editor) {
+            editor.addEventListener("click", (e) => e.stopPropagation());
+          }
+
+          const saveBtn = card.querySelector(".roster-save-btn");
+          if (saveBtn) {
+            saveBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              const roleInput = card.querySelector(".roster-role-input");
+              const groupInput = card.querySelector(".roster-group-input");
+              const role = roleInput ? roleInput.value : "volunteer";
+              const groupId = groupInput ? groupInput.value : "";
+              this.activeAssignMemberId = null;
+              this.assignMemberRoleAndGroup(person.id, role, groupId);
+            });
+          }
+
+          const cancelBtn = card.querySelector(".roster-cancel-btn");
+          if (cancelBtn) {
+            cancelBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              this.activeAssignMemberId = null;
+              this.renderAssignRoles();
+            });
+          }
+
+          const removeBtn = card.querySelector(".roster-remove-btn");
+          if (removeBtn) {
+            removeBtn.addEventListener("click", (e) => {
+              e.stopPropagation();
+              try {
+                if (window.confirm && !window.confirm(`Remove ${person.name} from the event?`)) return;
+              } catch {}
+              this.state.joinedPeople = this.state.joinedPeople.filter((p) => p.id !== person.id);
+              if (this.activeAssignMemberId === person.id) this.activeAssignMemberId = null;
+              this.persistState();
+              this.renderAssignRoles();
+              this.renderDashboard();
+              this.renderAbout();
+              this.updateStats();
+            });
+          }
+        }
       }
+
       list.appendChild(card);
     });
   }
@@ -1523,20 +1637,20 @@ class AppController {
 
   // --------------------------------------------------------------------- about
   renderAbout() {
-    const evt = this.state.currentEvent || {};
+    const evt = this.state.currentEvent;
     const programmes = taskManager.getProgrammes();
     const set = (id, text) => {
       const el = document.getElementById(id);
       if (el) el.textContent = text;
     };
-    set("about-event-title", evt.title || "Kraft Night 2026");
-    set("about-event-sub", `${evt.title || "Kraft Night 2026"} · Unified event command center`);
-    set("about-field-title", evt.title || "Kraft Night 2026");
-    set("about-field-venue", evt.venue || "Main Campus & Auditorium");
-    set("about-field-pin", evt.sixDigitCode || "—");
-    set("about-field-status", evt.status || "active");
+    set("about-event-title", evt ? evt.title : "Event Overview");
+    set("about-event-sub", evt ? `${evt.title} · Unified event command center` : "Unified event command center");
+    set("about-field-title", evt ? evt.title : "—");
+    set("about-field-venue", evt ? (evt.venue || "TBD") : "—");
+    set("about-field-pin", evt ? evt.sixDigitCode : "—");
+    set("about-field-status", evt ? evt.status : "active");
     set("about-field-programs", `${programmes.length} scheduled`);
-    set("about-field-members", `${this.state.joinedPeople.length} joined`);
+    set("about-field-members", `${this.state.joinedPeople ? this.state.joinedPeople.length : 0} joined`);
 
     const groupsBox = document.getElementById("about-groups-list");
     if (groupsBox) {
@@ -1553,10 +1667,10 @@ class AppController {
     const orgBox = document.getElementById("about-organizers-list");
     if (orgBox) {
       orgBox.innerHTML = "";
-      const manager = this.state.joinedPeople.find((p) => p.role === "manager");
+      const manager = (this.state.joinedPeople || []).find((p) => p.role === "manager");
       const rows = [
         { name: manager ? manager.name : auth.getCurrentUser()?.name || "Event Manager", role: "Lead Organizer" },
-        ...this.state.groups.slice(0, 8).map((g) => ({ name: `${g.name} — ${g.leaderName || "TBD"}`, role: "Group Lead" })),
+        ...(this.state.groups || []).slice(0, 8).map((g) => ({ name: `${g.name} — ${g.leaderName || "TBD"}`, role: "Group Lead" })),
       ];
       rows.forEach((r) => {
         const row = document.createElement("div");
@@ -1569,7 +1683,7 @@ class AppController {
     }
 
     const sub = document.getElementById("dashboard-schedule-sub");
-    if (sub && evt.title) sub.textContent = `${evt.title} · Live programme timeline`;
+    if (sub) sub.textContent = evt?.title ? `${evt.title} · Live programme timeline` : "Live programme timeline";
   }
 
   // ------------------------------------------------------------------------ AI
@@ -1764,6 +1878,10 @@ class AppController {
     try {
       const result = await aiCoordinator.applyBlueprint(this.aiDraft.blueprintId, blueprint);
       const event = result.event;
+      const currentUser = auth.getCurrentUser();
+      if (currentUser?.canCreateFirstEvent) {
+        auth.setCustomUser({ ...currentUser, role: "manager", department: "Event Organizer", canCreateFirstEvent: false });
+      }
       this.appendAiMessage("bot", `Created ${event.event_title} as a separate draft event. Assign people to its unfilled role slots when the event opens.`, "Gemini plan");
       document.getElementById("ai-plan-preview").hidden = true;
       this.aiDraft = null;
@@ -1809,26 +1927,51 @@ class AppController {
     const deptEl = document.getElementById("user-dept-display");
     const badgeEl = document.getElementById("user-role-badge");
     const initialsEl = document.getElementById("user-avatar-initials");
+    const popName = document.getElementById("popover-user-name");
+    const popDept = document.getElementById("popover-user-dept");
+    const popBadge = document.getElementById("popover-user-role-badge");
+    const popAvatar = document.getElementById("popover-user-avatar");
+
+    if (!user) {
+      if (nameEl) nameEl.textContent = "—";
+      if (deptEl) deptEl.textContent = "—";
+      if (badgeEl) {
+        badgeEl.textContent = "MEMBER";
+        badgeEl.className = "role-tag role-volunteer";
+      }
+      if (initialsEl) {
+        initialsEl.textContent = "—";
+        initialsEl.style.color = "#9ca3af";
+      }
+      if (popName) popName.textContent = "—";
+      if (popDept) popDept.textContent = "—";
+      if (popBadge) {
+        popBadge.textContent = "MEMBER";
+        popBadge.className = "role-tag role-volunteer";
+      }
+      if (popAvatar) {
+        popAvatar.textContent = "—";
+        popAvatar.style.color = "#9ca3af";
+      }
+      return;
+    }
+
     if (nameEl) nameEl.textContent = user.name;
     if (deptEl) deptEl.textContent = user.department || user.roleLabel || user.role;
     if (badgeEl) {
-      badgeEl.textContent = user.role.toUpperCase();
-      badgeEl.className = `role-tag role-${user.role}`;
+      badgeEl.textContent = (user.role || "manager").toUpperCase();
+      badgeEl.className = `role-tag role-${user.role || "manager"}`;
     }
     if (initialsEl) {
       initialsEl.textContent = initialsFor(user.name);
       initialsEl.style.color = colorFor(user.name);
     }
     // Update Session & access popover active profile card
-    const popName = document.getElementById("popover-user-name");
-    const popDept = document.getElementById("popover-user-dept");
-    const popBadge = document.getElementById("popover-user-role-badge");
-    const popAvatar = document.getElementById("popover-user-avatar");
     if (popName) popName.textContent = user.name;
     if (popDept) popDept.textContent = user.department || user.roleLabel || user.role;
     if (popBadge) {
-      popBadge.textContent = user.role.toUpperCase();
-      popBadge.className = `role-tag role-${user.role}`;
+      popBadge.textContent = (user.role || "manager").toUpperCase();
+      popBadge.className = `role-tag role-${user.role || "manager"}`;
     }
     if (popAvatar) {
       popAvatar.textContent = initialsFor(user.name);
@@ -1844,15 +1987,15 @@ class AppController {
   }
 
   updateEventDisplay() {
-    const evt = this.state.currentEvent || {};
+    const evt = this.state.currentEvent;
     const titleEl = document.getElementById("side-event-title");
     const codeEl = document.getElementById("side-event-code");
     const navCodeEl = document.getElementById("nav-code-display");
     const popTitleEl = document.getElementById("popover-event-title");
-    if (titleEl) titleEl.textContent = evt.title || "Kraft Night 2026";
-    if (codeEl) codeEl.textContent = `PIN: ${evt.sixDigitCode || "—"}`;
-    if (navCodeEl) navCodeEl.textContent = evt.sixDigitCode || "—";
-    if (popTitleEl) popTitleEl.textContent = evt.title || "Kraft Night 2026";
+    if (titleEl) titleEl.textContent = evt ? evt.title : "No Active Event";
+    if (codeEl) codeEl.textContent = `PIN: ${evt ? evt.sixDigitCode : "—"}`;
+    if (navCodeEl) navCodeEl.textContent = evt ? evt.sixDigitCode : "—";
+    if (popTitleEl) popTitleEl.textContent = evt ? evt.title : "No Active Event";
     this.renderAbout();
   }
 
