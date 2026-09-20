@@ -34,3 +34,45 @@ test("the dependency-free workspace smoke suite passes", async ({ page }) => {
   await expect(page.locator("#results li").last()).toContainText("PASS", { timeout: 55_000 });
   await expect(page.locator("#results .fail")).toHaveCount(0);
 });
+
+test("Gateway Plan with Gemini opens dedicated planner modal, supports templates and creates event", async ({ page }) => {
+  test.setTimeout(30_000);
+  await page.goto("http://localhost:3456/index.html");
+  await page.waitForFunction(() => Boolean(window.sangamApp));
+  await page.evaluate(() => {
+    window.sangamApp.switchView("gateway", { skipGuard: true });
+  });
+
+  // 1. Click Plan with Gemini
+  const planBtn = page.locator("#btn-plan-event");
+  await expect(planBtn).toBeVisible();
+  await planBtn.click();
+
+  // 2. Modal appears
+  const modal = page.locator("#modal-event-planner");
+  await expect(modal).toBeVisible();
+
+  // 3. Templates are rendered
+  const templates = modal.locator(".planner-tpl-card");
+  await expect(templates).toHaveCount(4);
+
+  // 4. Click Wedding template
+  await modal.locator('.planner-tpl-card[data-tpl-id="wedding"]').click();
+  await expect(modal.locator("#planner-event-title")).toHaveValue("Grand Wedding Celebration");
+  await expect(modal.locator("#planner-groups-list .planner-item-row")).toHaveCount(5);
+
+  // 5. Test AI prompt input and generate
+  await modal.locator("#planner-ai-input").fill("Add an e-sports tournament and live streaming crew");
+  await modal.locator("#btn-planner-ai-submit").click();
+
+  // 6. Verify blueprint updates with gaming department
+  await expect(modal.locator('#planner-groups-list input[value*="Gaming"]')).toBeVisible({ timeout: 10000 });
+
+  // 7. Click Create Event from Plan
+  await modal.locator("#btn-planner-create-event").click();
+
+  // 8. Modal closes and switches to dashboard
+  await expect(modal).toBeHidden();
+  await expect(page.locator("#view-workspace")).toBeVisible();
+});
+

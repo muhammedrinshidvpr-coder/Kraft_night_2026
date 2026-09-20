@@ -24,6 +24,17 @@ export function parseTimeToMinutes(timeStr) {
   return hours * 60 + minutes;
 }
 
+function getActiveEventId() {
+  try {
+    const raw = localStorage.getItem("sangam_current_event");
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.id) return parsed.id;
+    }
+  } catch {}
+  return null;
+}
+
 class TaskManager {
   constructor() {
     this.programmes = this.loadProgrammes();
@@ -65,11 +76,12 @@ class TaskManager {
       const sb = await getSupabase();
       if (!sb) return;
 
-      // 1. Fetch remote programmes
-      const { data, error } = await sb
-        .from("programmes")
-        .select("*")
-        .order("start_time", { ascending: true });
+      const activeEventId = getActiveEventId();
+      let query = sb.from("programmes").select("*");
+      if (activeEventId) {
+        query = query.eq("event_id", activeEventId);
+      }
+      const { data, error } = await query.order("start_time", { ascending: true });
 
       if (!error && data && data.length > 0) {
         this.programmes = data.map((r) => ({
@@ -219,11 +231,12 @@ class TaskManager {
     if (isLive()) {
       getSupabase().then((sb) => {
         if (sb) {
+          const activeEventId = getActiveEventId() || "evt-" + Date.now();
           sb.from("programmes")
             .insert([
               {
                 id: newProg.id,
-                event_id: "evt-kraft-2026",
+                event_id: activeEventId,
                 title: newProg.title,
                 description: newProg.description,
                 start_time: newProg.startTime,

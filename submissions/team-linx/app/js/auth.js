@@ -98,15 +98,24 @@ class AuthManager {
       canCreateFirstEvent = true;
     }
 
+    let isJoiningWithPin = false;
+    try {
+      const pendingPin = (typeof sessionStorage !== "undefined" && sessionStorage.getItem("sangam_pending_pin")) ||
+        (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("pin"));
+      if (pendingPin && pendingPin.length === 6) {
+        isJoiningWithPin = true;
+      }
+    } catch {}
+
     const user = {
       id: userId,
       name: cleanName,
       email: cleanEmail,
       avatar: initials,
-      role: "manager",
-      department: "Event Organizer",
+      role: isJoiningWithPin ? "volunteer" : "manager",
+      department: isJoiningWithPin ? "Event Member" : "Event Organizer",
       assignedGroupId: null,
-      canCreateFirstEvent,
+      canCreateFirstEvent: !isJoiningWithPin && canCreateFirstEvent,
     };
 
     if (isLive()) {

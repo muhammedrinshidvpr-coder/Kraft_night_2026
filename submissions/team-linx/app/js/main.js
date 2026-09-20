@@ -9,6 +9,8 @@ import { taskManager } from "./tasks.js";
 import { chatManager } from "./chat.js";
 import { aiCoordinator } from "./ai.js";
 import { emailService } from "./email.js";
+import { eventPlanner } from "./event-planner.js";
+import { getSupabase, isLive } from "./supabase-client.js";
 
 const WORKSPACE_PAGES = ["dashboard", "assign-roles", "create-program", "groups", "about-event"];
 const ALL_VIEWS = ["landing", "login", "signup", "gateway", ...WORKSPACE_PAGES];
@@ -85,6 +87,7 @@ class AppController {
     this.bindWorkspaceForms();
     this.bindChatSystem();
     this.bindGeminiAssistant();
+    eventPlanner.init(this);
     this.updateAiAccess();
     this.bindSessionPopover();
     this.bindTimelineAutoScroll();
@@ -98,6 +101,16 @@ class AppController {
     this.switchView(this.currentView, { skipSave: true });
     this.updateEventDisplay();
     this.updateStats();
+
+    // Check if user opened a link with a pin and is already authenticated
+    try {
+      const urlPin = new URLSearchParams(window.location.search).get("pin");
+      if (urlPin && urlPin.length === 6 && auth.getCurrentUser()?.name) {
+        setTimeout(() => {
+          this.joinEventByCode(urlPin);
+        }, 150);
+      }
+    } catch {}
 
     // Live real-time tick: updates navbar clock and auto-refreshes schedule status on minute turnover
     setInterval(() => {
@@ -303,9 +316,8 @@ class AppController {
             loginAlert.className = "entry-auth-alert success";
             loginAlert.hidden = false;
           }
-          setTimeout(() => {
-            this.updateGatewayUserDisplay();
-            this.switchView("gateway");
+          setTimeout(async () => {
+            await this.handlePendingPinOrGateway();
           }, 350);
         } catch (err) {
           if (loginAlert) {
@@ -342,9 +354,8 @@ class AppController {
             signupAlert.className = "entry-auth-alert success";
             signupAlert.hidden = false;
           }
-          setTimeout(() => {
-            this.updateGatewayUserDisplay();
-            this.switchView("gateway");
+          setTimeout(async () => {
+            await this.handlePendingPinOrGateway();
           }, 350);
         } catch (err) {
           if (signupAlert) {
@@ -484,8 +495,9 @@ class AppController {
   checkUrlPinParam() {
     try {
       const params = new URLSearchParams(window.location.search);
-      const pin = params.get("pin");
+      const pin = params.get("pin") || (typeof sessionStorage !== "undefined" && sessionStorage.getItem("sangam_pending_pin"));
       if (pin && pin.length === 6) {
+        try { sessionStorage.setItem("sangam_pending_pin", pin); } catch {}
         const pinInputs = document.querySelectorAll(".pin-digit");
         if (pinInputs.length === 6) {
           pin.split("").forEach((d, i) => {
@@ -496,6 +508,21 @@ class AppController {
     } catch (e) {
       console.warn("Could not check URL pin param:", e);
     }
+  }
+
+  async handlePendingPinOrGateway() {
+    let pendingPin = null;
+    try {
+      pendingPin = sessionStorage.getItem("sangam_pending_pin") ||
+        new URLSearchParams(window.location.search).get("pin");
+    } catch {}
+
+    if (pendingPin && pendingPin.length === 6) {
+      const joined = await this.joinEventByCode(pendingPin);
+      if (joined) return;
+    }
+    this.updateGatewayUserDisplay();
+    this.switchView("gateway");
   }
 
   bindEntryEffects() {
@@ -738,7 +765,7 @@ class AppController {
   bindGatewayForms() {
     const createForm = document.getElementById("create-event-form");
     if (createForm) {
-      createForm.addEventListener("submit", (e) => {
+      createForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const input = document.getElementById("input-event-title");
         const title = (input?.value || "").trim();
@@ -758,8 +785,78 @@ class AppController {
           auth.setCustomUser(currentUser);
         }
 
+        let eventId = "evt-" + Date.now();
+        let generalGroupId = "grp-general";
+
+        if (isLive()) {
+          try {
+            const sb = await getSupabase();
+            if (sb) {
+              await sb.from("profiles").upsert({
+                id: currentUser.id,
+                full_name: currentUser.name,
+                email: currentUser.email || `${currentUser.name.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@sangam.app`,
+                role: "manager",
+                department: "Event Organizer"
+              });
+
+              const { data: createdEvt, error: evtErr } = await sb
+                .from("events")
+                .insert({
+                  title,
+                  six_digit_code: randomCode,
+                  venue: "TBD",
+                  status: "active",
+                  manager_id: currentUser.id,
+                })
+                .select()
+                .single();
+
+              if (!evtErr && createdEvt) {
+                eventId = createdEvt.id;
+              } else if (evtErr) {
+                console.warn("[Sangam] Supabase event insert error:", evtErr);
+              }
+
+              const { data: createdGrp, error: grpErr } = await sb
+                .from("event_groups")
+                .insert({
+                  event_id: eventId,
+                  name: "General Announcements",
+                  icon: "📢",
+                  description: "Global broadcasts and inter-departmental notices",
+                  leader_id: currentUser.id,
+                  leader_name: currentUser.name,
+                  member_count: 1
+                })
+                .select()
+                .single();
+
+              if (!grpErr && createdGrp) {
+                generalGroupId = createdGrp.id;
+              }
+
+              await sb.from("event_members").insert({
+                event_id: eventId,
+                user_id: currentUser.id,
+                name: currentUser.name,
+                email: currentUser.email || `${currentUser.name.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@sangam.app`,
+                role: "manager",
+                role_badge: "Event Manager",
+                assigned_group_id: generalGroupId,
+                group_name: "General Announcements",
+                status: "active"
+              });
+
+              sb.from("profiles").update({ role: "manager" }).eq("id", currentUser.id).then(() => {}).catch(() => {});
+            }
+          } catch (err) {
+            console.warn("[Sangam] Failed to persist event to Supabase:", err);
+          }
+        }
+
         const newEvent = {
-          id: "evt-" + Date.now(),
+          id: eventId,
           title,
           sixDigitCode: randomCode,
           venue: "TBD",
@@ -769,7 +866,15 @@ class AppController {
           manager_name: currentUser.name,
         };
 
-        const generalGroup = createDefaultGeneralGroup(currentUser.id, currentUser.name);
+        const generalGroup = {
+          id: generalGroupId,
+          name: "General Announcements",
+          icon: "📢",
+          description: "Global broadcasts and inter-departmental notices",
+          leaderId: currentUser.id,
+          leaderName: currentUser.name,
+          memberCount: 1
+        };
 
         const managerMember = {
           id: currentUser.id,
@@ -777,7 +882,7 @@ class AppController {
           email: currentUser.email || `${currentUser.name.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@sangam.app`,
           role: "manager",
           roleBadge: "Event Manager",
-          groupId: generalGroup.id,
+          groupId: generalGroupId,
           groupName: generalGroup.name,
           status: "active",
           joinedAt: "Organizer",
@@ -788,11 +893,11 @@ class AppController {
         this.state.programmes = [];
         this.state.groups = [generalGroup];
         this.state.joinedPeople = [managerMember];
-        this.state.messages = { [generalGroup.id]: [] };
+        this.state.messages = { [generalGroupId]: [] };
 
         taskManager.setProgrammes([]);
-        chatManager.setActiveGroup(generalGroup.id);
-        chatManager.setMessages({ [generalGroup.id]: [] });
+        chatManager.setActiveGroup(generalGroupId);
+        chatManager.setMessages({ [generalGroupId]: [] });
 
         try {
           const allEvents = JSON.parse(localStorage.getItem("sangam_all_events") || "[]");
@@ -856,90 +961,294 @@ class AppController {
 
     const findForm = document.getElementById("find-event-form");
     if (findForm) {
-      findForm.addEventListener("submit", (e) => {
+      findForm.addEventListener("submit", async (e) => {
         e.preventDefault();
         const alertEl = document.getElementById("join-event-alert");
-        if (alertEl) alertEl.hidden = true;
-
         const code = Array.from(pinInputs).map((i) => i.value).join("");
-        if (code.length < 6) {
-          if (alertEl) {
-            alertEl.textContent = "Please enter a valid 6-digit Event Code.";
-            alertEl.className = "entry-auth-alert error";
-            alertEl.hidden = false;
-          } else {
-            alert("Please enter a valid 6-digit Event Code.");
-          }
-          return;
-        }
-
-        const currentUser = auth.getCurrentUser();
-        if (!currentUser || !currentUser.name) {
-          if (alertEl) {
-            alertEl.textContent = "Please log in or sign up first to join this event with your account.";
-            alertEl.className = "entry-auth-alert error";
-            alertEl.hidden = false;
-          }
-          sessionStorage.setItem("sangam_pending_pin", code);
-          setTimeout(() => this.switchView("login"), 1200);
-          return;
-        }
-
-        let foundEvent = null;
-        if (this.state.currentEvent && this.state.currentEvent.sixDigitCode === code) {
-          foundEvent = this.state.currentEvent;
-        } else {
-          try {
-            const allEvents = JSON.parse(localStorage.getItem("sangam_all_events") || "[]");
-            foundEvent = allEvents.find((ev) => ev.sixDigitCode === code);
-          } catch {}
-        }
-
-        if (!foundEvent && !this.state.currentEvent) {
-          if (alertEl) {
-            alertEl.textContent = `No active event found with code ${code}. Please check the PIN or create a new event.`;
-            alertEl.className = "entry-auth-alert error";
-            alertEl.hidden = false;
-          }
-          return;
-        }
-
-        if (foundEvent) {
-          this.state.currentEvent = foundEvent;
-        }
-
-        const newAttendee = {
-          id: currentUser.id,
-          name: currentUser.name,
-          email: currentUser.email || `${currentUser.name.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@sangam.app`,
-          role: currentUser.role === "manager" ? "manager" : "volunteer",
-          roleBadge: currentUser.role === "manager" ? "Event Manager" : "Volunteer",
-          groupId: currentUser.assignedGroupId || (this.state.groups[0]?.id || null),
-          groupName: this.state.groups[0]?.name || "General Announcements",
-          status: "active",
-          joinedAt: "Just now",
-          avatar: currentUser.avatar
-        };
-
-        const existingIdx = this.state.joinedPeople.findIndex(
-          (p) => p.id === newAttendee.id || p.name.toLowerCase() === newAttendee.name.toLowerCase()
-        );
-        if (existingIdx >= 0) {
-          this.state.joinedPeople[existingIdx] = { ...this.state.joinedPeople[existingIdx], status: "active" };
-        } else {
-          this.state.joinedPeople.unshift(newAttendee);
-        }
-
-        if (this.state.currentEvent) {
-          this.state.currentEvent.sixDigitCode = code;
-        }
-        this.persistState();
-        this.renderAssignRoles();
-        this.renderAbout();
-        this.updateStats();
-        this.switchView("dashboard");
+        await this.joinEventByCode(code, alertEl);
       });
     }
+  }
+
+  async joinEventByCode(rawCode, alertEl = null) {
+    if (!alertEl) {
+      alertEl = document.getElementById("join-event-alert");
+    }
+    if (alertEl) {
+      alertEl.hidden = true;
+      alertEl.className = "entry-auth-alert";
+    }
+
+    const code = String(rawCode || "").trim();
+    if (code.length < 6) {
+      if (alertEl) {
+        alertEl.textContent = "Please enter a valid 6-digit Event Code.";
+        alertEl.className = "entry-auth-alert error";
+        alertEl.hidden = false;
+      } else {
+        alert("Please enter a valid 6-digit Event Code.");
+      }
+      return false;
+    }
+
+    let currentUser = auth.getCurrentUser();
+    if (!currentUser || !currentUser.name) {
+      if (alertEl) {
+        alertEl.textContent = "Please log in or sign up first to join this event with your account.";
+        alertEl.className = "entry-auth-alert error";
+        alertEl.hidden = false;
+      }
+      try { sessionStorage.setItem("sangam_pending_pin", code); } catch {}
+      setTimeout(() => this.switchView("login"), 1200);
+      return false;
+    }
+
+    if (alertEl) {
+      alertEl.textContent = "Connecting to event...";
+      alertEl.className = "entry-auth-alert info";
+      alertEl.hidden = false;
+    }
+
+    let foundEvent = null;
+    let fetchedGroups = [];
+    let fetchedProgrammes = [];
+    let fetchedMembers = [];
+
+    // 1. Check Supabase first if live
+    if (isLive()) {
+      try {
+        const sb = await getSupabase();
+        if (sb) {
+          const { data, error } = await sb
+            .from("events")
+            .select("*")
+            .eq("six_digit_code", code)
+            .neq("status", "archived")
+            .limit(1);
+
+          if (!error && data && data.length > 0) {
+            const row = data[0];
+            foundEvent = {
+              id: row.id,
+              title: row.title,
+              sixDigitCode: row.six_digit_code,
+              venue: row.venue || "TBD",
+              status: row.status || "active",
+              manager_id: row.manager_id,
+              created_at: row.created_at,
+            };
+
+            const { data: grpRows } = await sb
+              .from("event_groups")
+              .select("*")
+              .eq("event_id", row.id);
+            if (grpRows && grpRows.length > 0) {
+              fetchedGroups = grpRows.map((g) => ({
+                id: g.id,
+                name: g.name,
+                icon: g.icon || "👥",
+                description: g.description || "",
+                leaderId: g.leader_id || "",
+                leaderName: g.leader_name || "",
+                memberCount: g.member_count || 0
+              }));
+            }
+
+            const { data: progRows } = await sb
+              .from("programmes")
+              .select("*")
+              .eq("event_id", row.id)
+              .order("start_time", { ascending: true });
+            if (progRows && progRows.length > 0) {
+              fetchedProgrammes = progRows.map((p) => ({
+                id: p.id,
+                title: p.title,
+                description: p.description || "",
+                startTime: p.start_time,
+                endTime: p.end_time,
+                venue: p.venue,
+                status: p.status,
+                leadGroup: p.lead_group || "General Announcements"
+              }));
+            }
+
+            const { data: memRows } = await sb
+              .from("event_members")
+              .select("*")
+              .eq("event_id", row.id);
+            if (memRows && memRows.length > 0) {
+              fetchedMembers = memRows.map((m) => ({
+                id: m.user_id || m.id,
+                name: m.name,
+                email: m.email || "",
+                role: m.role || "volunteer",
+                roleBadge: m.role_badge || (m.role === "manager" ? "Event Manager" : "Volunteer"),
+                groupId: m.assigned_group_id || null,
+                groupName: m.group_name || "General Announcements",
+                status: m.status || "active",
+                joinedAt: m.joined_at ? "Active" : "Just now",
+                avatar: currentUser.avatar
+              }));
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[Sangam] Failed to query Supabase for event by code:", err);
+      }
+    }
+
+    // 2. Fallback to local storage if not found in Supabase
+    if (!foundEvent) {
+      if (this.state.currentEvent && this.state.currentEvent.sixDigitCode === code) {
+        foundEvent = this.state.currentEvent;
+      } else {
+        try {
+          const allEvents = JSON.parse(localStorage.getItem("sangam_all_events") || "[]");
+          foundEvent = allEvents.find((ev) => ev.sixDigitCode === code && ev.status !== "archived");
+        } catch {}
+      }
+    }
+
+    if (!foundEvent) {
+      if (alertEl) {
+        alertEl.textContent = `No active event found with code ${code}. Please check the PIN or create a new event.`;
+        alertEl.className = "entry-auth-alert error";
+        alertEl.hidden = false;
+      } else {
+        alert(`No active event found with code ${code}. Please check the PIN or create a new event.`);
+      }
+      return false;
+    }
+
+    // Role assignment: manager if creator, otherwise volunteer
+    const isCreator = Boolean(foundEvent.manager_id && (foundEvent.manager_id === currentUser.id || foundEvent.manager_name === currentUser.name));
+    const assignedRole = isCreator ? "manager" : "volunteer";
+    const assignedRoleBadge = isCreator ? "Event Manager" : "Volunteer";
+
+    if (!isCreator) {
+      currentUser = {
+        ...currentUser,
+        role: "volunteer",
+        department: "Event Member",
+        canCreateFirstEvent: false
+      };
+      auth.setCustomUser(currentUser);
+    }
+
+    let targetGroups = fetchedGroups.length > 0
+      ? fetchedGroups
+      : (this.state.groups.length > 0 ? this.state.groups : [createDefaultGeneralGroup(foundEvent.manager_id || currentUser.id, foundEvent.manager_name || "Event Manager")]);
+    const generalGroup = targetGroups[0];
+
+    const newAttendee = {
+      id: currentUser.id,
+      name: currentUser.name,
+      email: currentUser.email || `${currentUser.name.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@sangam.app`,
+      role: assignedRole,
+      roleBadge: assignedRoleBadge,
+      groupId: generalGroup.id,
+      groupName: generalGroup.name,
+      status: "active",
+      joinedAt: "Just now",
+      avatar: currentUser.avatar || initialsFor(currentUser.name)
+    };
+
+    // 3. Persist attendee to Supabase event_members if live
+    if (isLive()) {
+      try {
+        const sb = await getSupabase();
+        if (sb && foundEvent.id) {
+          await sb.from("profiles").upsert({
+            id: currentUser.id,
+            full_name: currentUser.name,
+            email: currentUser.email || `${currentUser.name.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@sangam.app`,
+            role: assignedRole,
+            department: isCreator ? "Event Organizer" : "Event Member"
+          });
+
+          const { data: existing } = await sb
+            .from("event_members")
+            .select("id")
+            .eq("event_id", foundEvent.id)
+            .eq("user_id", currentUser.id)
+            .limit(1);
+
+          if (existing && existing.length > 0) {
+            await sb.from("event_members").update({
+              name: newAttendee.name,
+              email: newAttendee.email,
+              role: assignedRole,
+              role_badge: assignedRoleBadge,
+              assigned_group_id: generalGroup.id,
+              group_name: generalGroup.name,
+              status: "active"
+            }).eq("id", existing[0].id);
+          } else {
+            await sb.from("event_members").insert({
+              event_id: foundEvent.id,
+              user_id: currentUser.id,
+              name: newAttendee.name,
+              email: newAttendee.email,
+              role: assignedRole,
+              role_badge: assignedRoleBadge,
+              assigned_group_id: generalGroup.id,
+              group_name: generalGroup.name,
+              status: "active"
+            });
+          }
+        }
+      } catch (e) {
+        console.warn("[Sangam] Failed to sync member in Supabase:", e);
+      }
+    }
+
+    this.state.currentEvent = foundEvent;
+    this.state.groups = targetGroups;
+
+    let memberList = fetchedMembers.length > 0 ? fetchedMembers : [...this.state.joinedPeople];
+    const existingIdx = memberList.findIndex(
+      (p) => p.id === newAttendee.id || (p.name && p.name.toLowerCase() === newAttendee.name.toLowerCase())
+    );
+    if (existingIdx >= 0) {
+      memberList[existingIdx] = { ...memberList[existingIdx], ...newAttendee, status: "active" };
+    } else {
+      memberList.unshift(newAttendee);
+    }
+    this.state.joinedPeople = memberList;
+
+    if (fetchedProgrammes.length > 0) {
+      this.state.programmes = fetchedProgrammes;
+      taskManager.setProgrammes(fetchedProgrammes);
+    }
+
+    chatManager.setActiveGroup(generalGroup.id);
+    if (!this.state.messages[generalGroup.id]) {
+      this.state.messages[generalGroup.id] = [];
+    }
+    chatManager.setMessages(this.state.messages);
+
+    try {
+      sessionStorage.removeItem("sangam_pending_pin");
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("pin")) {
+        url.searchParams.delete("pin");
+        window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ""));
+      }
+    } catch {}
+
+    if (alertEl) alertEl.hidden = true;
+
+    this.syncRoleButtons();
+    this.persistState();
+    this.updateEventDisplay();
+    this.renderDashboard();
+    this.renderAssignRoles();
+    this.renderProgramsPage();
+    this.renderChatChannels();
+    this.renderAbout();
+    this.updateStats();
+    this.switchView("dashboard");
+    return true;
   }
 
   // ---------------------------------------------------------- workspace forms
@@ -1621,7 +1930,7 @@ class AppController {
       return;
     }
     messages.forEach((msg) => {
-      const mine = msg.senderId === currentUser.id;
+      const mine = Boolean(currentUser && msg.senderId === currentUser.id);
       const row = document.createElement("div");
       row.className = `msg-row${mine ? " mine" : ""}`;
       row.innerHTML = `
@@ -1741,11 +2050,8 @@ class AppController {
     if (gatewayPlanBtn && !gatewayPlanBtn.dataset.bound) {
       gatewayPlanBtn.dataset.bound = "true";
       gatewayPlanBtn.addEventListener("click", () => {
-        if (!auth.canRunAIBriefing()) return;
-        const title = (document.getElementById("input-event-title")?.value || "new event").trim();
-        this.switchView("dashboard");
-        this.openDrawers("ai");
-        this.submitGeminiPrompt(`Create an event plan for ${title} with appropriate groups, role slots, and programmes.`);
+        const title = (document.getElementById("input-event-title")?.value || "").trim();
+        eventPlanner.open(title);
       });
     }
 
@@ -1789,7 +2095,7 @@ class AppController {
     });
     if (rail) rail.hidden = !allowed;
     if (fab) fab.hidden = !allowed;
-    if (gatewayPlan) gatewayPlan.hidden = !allowed;
+    if (gatewayPlan) gatewayPlan.hidden = false;
     if (!allowed) this.closeDrawers();
     this.setAiStatus(allowed ? "Live event data ready" : "Manager access required", allowed ? "local" : "locked");
   }

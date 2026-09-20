@@ -567,7 +567,120 @@
     </div>
   </section>
 
-  <script src="/api/runtime-config"></script>
+  <!-- Dedicated Gemini Event Planner Modal -->
+  <div class="planner-modal-wrap" id="modal-event-planner" role="dialog" aria-modal="true" aria-labelledby="planner-modal-title" hidden>
+    <div class="planner-backdrop" id="planner-modal-backdrop"></div>
+    <div class="planner-dialog">
+      <!-- Modal Header -->
+      <div class="planner-header">
+        <div class="planner-brand-group">
+          <div class="planner-icon-badge">✦</div>
+          <div>
+            <div class="planner-title-row">
+              <h2 id="planner-modal-title">Sangam AI Event Planner</h2>
+              <span class="planner-gemini-pill">✦ Powered by Gemini 2.5 Flash</span>
+            </div>
+            <p class="planner-subtitle">Select an instant starter template or prompt Gemini AI to generate departments, roles &amp; schedules.</p>
+          </div>
+        </div>
+        <button type="button" class="icon-btn planner-close-btn" id="btn-planner-close" aria-label="Close Event Planner" title="Close">✕</button>
+      </div>
+
+      <!-- Quick Template Presets -->
+      <div class="planner-section">
+        <div class="planner-section-head">
+          <span class="planner-section-num">1</span>
+          <h3>Choose a Starter Template</h3>
+          <span class="planner-badge-instant">⚡ Zero-Latency Instant Pre-fill</span>
+        </div>
+        <div class="planner-templates-grid" id="planner-templates-grid"></div>
+      </div>
+
+      <!-- Gemini AI Prompt Bar -->
+      <div class="planner-section">
+        <div class="planner-section-head">
+          <span class="planner-section-num">2</span>
+          <h3>Customize with Gemini AI</h3>
+          <span class="planner-source-badge" id="planner-source-badge">Preset Template: Hackathon</span>
+        </div>
+        <form class="planner-ai-bar" id="planner-ai-form">
+          <div class="planner-ai-input-wrap">
+            <span class="planner-ai-sparkle">✦</span>
+            <input type="text" id="planner-ai-input" class="planner-ai-input" placeholder="Describe your event or ask Gemini to customize (e.g. 'Add an e-sports tournament and live streaming crew')..." autocomplete="off">
+          </div>
+          <div class="planner-ai-actions">
+            <button type="button" class="btn-light btn-small" id="btn-planner-enhance" title="Enhance current plan with AI instruction">✨ Enhance Plan</button>
+            <button type="submit" class="btn-dark btn-small" id="btn-planner-ai-submit">✦ Generate with Gemini</button>
+          </div>
+        </form>
+        <div class="planner-chips-row">
+          <span class="planner-chips-label">Quick Ideas:</span>
+          <button type="button" class="planner-chip" data-prompt="Add an e-sports gaming arena with tournament marshal and live streaming crew">🎮 Add Gaming Arena</button>
+          <button type="button" class="planner-chip" data-prompt="Include Haldi, Mehndi ceremonies and bridal photography squad">💍 Add Haldi &amp; Mehndi</button>
+          <button type="button" class="planner-chip" data-prompt="Add VIP artist hospitality, green room protocol and celebrity soundcheck">⭐ Celebrity Artist VIP</button>
+          <button type="button" class="planner-chip" data-prompt="Add hands-on AI workshops and cloud infrastructure demo stage">⚡ Add AI Workshops</button>
+        </div>
+      </div>
+
+      <!-- Live Interactive Blueprint Canvas -->
+      <div class="planner-section planner-canvas-section" id="planner-canvas-wrap">
+        <div class="planner-section-head">
+          <span class="planner-section-num">3</span>
+          <h3>Live Blueprint Preview (Fully Editable)</h3>
+          <p class="planner-canvas-hint">Review and tweak operational departments, unfilled role slots, and timeline schedule before launch.</p>
+        </div>
+
+        <div class="planner-meta-grid">
+          <div class="field">
+            <label for="planner-event-title">Event Title</label>
+            <input type="text" id="planner-event-title" required placeholder="e.g. HackSangam 2026: 24-Hour Sprint">
+          </div>
+          <div class="field">
+            <label for="planner-event-venue">Venue / Location</label>
+            <input type="text" id="planner-event-venue" required placeholder="e.g. Tech Innovation Hub &amp; Maker Labs">
+          </div>
+        </div>
+
+        <!-- Groups / Departments -->
+        <div class="planner-block">
+          <div class="planner-block-head">
+            <h4>Operational Departments</h4>
+            <button type="button" class="btn-text-action" id="btn-planner-add-group">＋ Add Department</button>
+          </div>
+          <div class="planner-items-list" id="planner-groups-list"></div>
+        </div>
+
+        <!-- Unfilled Role Slots -->
+        <div class="planner-block">
+          <div class="planner-block-head">
+            <h4>Unfilled Role Slots</h4>
+            <button type="button" class="btn-text-action" id="btn-planner-add-role">＋ Add Role Slot</button>
+          </div>
+          <div class="planner-items-list" id="planner-roles-list"></div>
+        </div>
+
+        <!-- Programme Timeline -->
+        <div class="planner-block">
+          <div class="planner-block-head">
+            <h4>Programme Schedule Timeline</h4>
+            <button type="button" class="btn-text-action" id="btn-planner-add-programme">＋ Add Programme</button>
+          </div>
+          <div class="planner-items-list" id="planner-programmes-list"></div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="planner-footer">
+        <button type="button" class="btn-light" id="btn-planner-cancel">Discard</button>
+        <button type="button" class="btn-dark btn-primary-pulse" id="btn-planner-create-event">
+          🚀 Create Event from Plan
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="env.js" onerror="/* env.js is optional */"></script>
+  <script src="/api/runtime-config" onerror="/* runtime-config optional */"></script>
   <script type="module" src="js/main.js"></script>
 </body>
 </html>
