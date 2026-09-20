@@ -21,7 +21,7 @@ const PAGE_TITLES = {
   groups: "Groups",
   "about-event": "About Event",
 };
-const AVATAR_COLORS = ["#db2777", "#ea580c", "#7c3aed", "#059669", "#0284c7", "#d97706"];
+const AVATAR_COLORS = ["#2f82d9", "#e88416", "#168f9d", "#18a86b", "#202a3a", "#d08a12"];
 
 function esc(value) {
   return String(value ?? "")
@@ -74,6 +74,7 @@ class AppController {
     this.userIsScrollingTimeline = false;
     this.timelineScrollTimeout = null;
     this.activeAssignMemberId = null;
+    this.membersRealtimeChannel = null;
   }
 
   init() {
@@ -91,6 +92,7 @@ class AppController {
     this.updateAiAccess();
     this.bindSessionPopover();
     this.bindTimelineAutoScroll();
+    this.initLiveMembersSync();
     taskManager.onProgrammesChange(() => {
       this.renderDashboard();
       this.renderProgramsPage();
@@ -525,6 +527,144 @@ class AppController {
     this.switchView("gateway");
   }
 
+  async initLiveMembersSync() {
+    if (!isLive()) return;
+
+    try {
+      const sb = await getSupabase();
+      if (!sb) return;
+
+      if (this.membersRealtimeChannel) {
+        this.membersRealtimeChannel.unsubscribe();
+        this.membersRealtimeChannel = null;
+      }
+
+      this.membersRealtimeChannel = sb
+        .channel("sangam-realtime-members")
+        .on(
+          "postgres_changes",
+          { event: "*", schema: "public", table: "event_members" },
+          (payload) => {
+            this.handleRealtimeMemberEvent(payload);
+          }
+        )
+        .subscribe((status) => {
+          console.log(`[Sangam Members] Realtime subscription status: ${status}`);
+        });
+    } catch (err) {
+      console.warn("[Sangam Members] Failed to init realtime sync:", err);
+    }
+  }
+
+  handleRealtimeMemberEvent(payload) {
+    if (!payload || !payload.eventType) return;
+    const currentEventId = this.state.currentEvent?.id;
+
+    if (payload.eventType === "INSERT" && payload.new) {
+      const row = payload.new;
+      if (currentEventId && row.event_id && row.event_id !== currentEventId) return;
+
+      const memberId = row.user_id || row.id;
+      const existingIdx = (this.state.joinedPeople || []).findIndex(
+        (p) => p.id === memberId || p.id === row.id || p.id === row.user_id
+      );
+
+      const formatted = {
+        id: memberId,
+        name: row.name,
+        email: row.email || "",
+        role: row.role || "volunteer",
+        roleBadge: row.role_badge || this.roleBadgeFor(row.role || "volunteer"),
+        groupId: row.assigned_group_id || null,
+        groupName: row.group_name || "General Announcements",
+        status: row.status || "active",
+        joinedAt: "Just now",
+        avatar: initialsFor(row.name)
+      };
+
+      if (!this.state.joinedPeople) this.state.joinedPeople = [];
+
+      if (existingIdx >= 0) {
+        this.state.joinedPeople[existingIdx] = { ...this.state.joinedPeople[existingIdx], ...formatted };
+      } else {
+        this.state.joinedPeople.unshift(formatted);
+      }
+
+      this.persistState();
+      this.renderAssignRoles();
+      this.renderDashboard();
+      this.renderAbout();
+      this.updateStats();
+    } else if (payload.eventType === "UPDATE" && payload.new) {
+      const row = payload.new;
+      if (currentEventId && row.event_id && row.event_id !== currentEventId) return;
+
+      const memberId = row.user_id || row.id;
+      if (!this.state.joinedPeople) this.state.joinedPeople = [];
+      const existingIdx = this.state.joinedPeople.findIndex(
+        (p) => p.id === memberId || p.id === row.id || p.id === row.user_id
+      );
+
+      if (existingIdx >= 0) {
+        this.state.joinedPeople[existingIdx] = {
+          ...this.state.joinedPeople[existingIdx],
+          role: row.role || this.state.joinedPeople[existingIdx].role,
+          roleBadge: row.role_badge || this.roleBadgeFor(row.role || this.state.joinedPeople[existingIdx].role),
+          groupId: row.assigned_group_id !== undefined ? row.assigned_group_id : this.state.joinedPeople[existingIdx].groupId,
+          groupName: row.group_name || this.state.joinedPeople[existingIdx].groupName,
+          status: row.status || this.state.joinedPeople[existingIdx].status
+        };
+      } else {
+        this.state.joinedPeople.unshift({
+          id: memberId,
+          name: row.name,
+          email: row.email || "",
+          role: row.role || "volunteer",
+          roleBadge: row.role_badge || this.roleBadgeFor(row.role || "volunteer"),
+          groupId: row.assigned_group_id || null,
+          groupName: row.group_name || "General Announcements",
+          status: row.status || "active",
+          joinedAt: "Active",
+          avatar: initialsFor(row.name)
+        });
+      }
+
+      // Check if the updated member is the active persona on this device
+      const currentUser = auth.getCurrentUser();
+      if (currentUser && (currentUser.id === memberId || currentUser.id === row.user_id || currentUser.id === row.id)) {
+        const newRole = row.role || currentUser.role;
+        const updatedUser = {
+          ...currentUser,
+          role: newRole,
+          department: newRole === "manager" ? "Event Organizer" : "Event Member",
+          assignedGroupId: row.assigned_group_id !== undefined ? row.assigned_group_id : currentUser.assignedGroupId
+        };
+        auth.setCustomUser(updatedUser);
+        this.handleUserRoleChanged(updatedUser);
+        this.syncRoleButtons();
+      }
+
+      this.persistState();
+      this.renderAssignRoles();
+      this.renderDashboard();
+      this.renderAbout();
+      this.updateStats();
+    } else if (payload.eventType === "DELETE" && payload.old) {
+      const deletedId = payload.old.user_id || payload.old.id;
+      if (this.state.joinedPeople) {
+        this.state.joinedPeople = this.state.joinedPeople.filter(
+          (p) => p.id !== deletedId && p.id !== payload.old.id && p.id !== payload.old.user_id
+        );
+      }
+
+      this.persistState();
+      this.renderAssignRoles();
+      this.renderDashboard();
+      this.renderAbout();
+      this.updateStats();
+    }
+  }
+
   bindEntryEffects() {
     if (this.entryEffectsBound) return;
     this.entryEffectsBound = true;
@@ -734,6 +874,10 @@ class AppController {
   logout() {
     this.closePopover();
     this.closeDrawers();
+    if (this.membersRealtimeChannel) {
+      this.membersRealtimeChannel.unsubscribe();
+      this.membersRealtimeChannel = null;
+    }
     auth.logout();
     this.switchView("login");
   }
@@ -890,6 +1034,7 @@ class AppController {
         };
 
         this.state.currentEvent = newEvent;
+        this.initLiveMembersSync();
         this.state.programmes = [];
         this.state.groups = [generalGroup];
         this.state.joinedPeople = [managerMember];
@@ -1203,6 +1348,7 @@ class AppController {
     }
 
     this.state.currentEvent = foundEvent;
+    this.initLiveMembersSync();
     this.state.groups = targetGroups;
 
     let memberList = fetchedMembers.length > 0 ? fetchedMembers : [...this.state.joinedPeople];
@@ -1401,7 +1547,7 @@ class AppController {
         row.setAttribute("aria-label", `${prog.title} — ${pill.label}. Activate to view assignments.`);
         if (isActive) row.setAttribute("aria-current", "true");
         if (isLive) row.setAttribute("data-live", "true");
-        const dotColor = isLive ? "#ef4444" : prog.status === "completed" ? "#d1d5db" : prog.status === "delayed" ? "#f59e0b" : "#8b5cf6";
+        const dotColor = isLive ? "#ef4444" : prog.status === "completed" ? "#d1d5db" : prog.status === "delayed" ? "#f59e0b" : "#2f82d9";
         const people = (prog.leadGroup ? this.state.joinedPeople.filter((m) => m.groupName === prog.leadGroup).slice(0, 4) : []).map((m) => `
           <span class="mini-person"><span class="avatar" style="color:${esc(colorFor(m.name))}">${esc(initialsFor(m.name))}</span><span>${esc(m.name)}</span><span class="role">${esc(m.roleBadge || m.role)}</span></span>
         `).join("");
@@ -1558,6 +1704,33 @@ class AppController {
       auth.setAssignedGroupId(groupId || null);
     }
 
+    // Sync role & group update to Supabase in real-time
+    if (isLive() && this.state.currentEvent?.id) {
+      getSupabase().then((sb) => {
+        if (!sb) return;
+        sb.from("event_members")
+          .update({
+            role: role,
+            role_badge: this.roleBadgeFor(role),
+            assigned_group_id: groupId || null,
+            group_name: group ? group.name : "Unassigned"
+          })
+          .eq("event_id", this.state.currentEvent.id)
+          .or(`user_id.eq.${personId},id.eq.${personId}`)
+          .then(({ error }) => {
+            if (error) console.warn("[Sangam] Failed to sync member update to Supabase:", error);
+          });
+
+        if (role === "manager" || role === "volunteer") {
+          sb.from("profiles")
+            .update({ role, department: role === "manager" ? "Event Organizer" : "Event Member" })
+            .eq("id", personId)
+            .then(() => {})
+            .catch(() => {});
+        }
+      });
+    }
+
     this.persistState();
     this.renderAssignRoles();
     this.renderDashboard();
@@ -1680,6 +1853,18 @@ class AppController {
               try {
                 if (window.confirm && !window.confirm(`Remove ${person.name} from the event?`)) return;
               } catch {}
+              if (isLive() && this.state.currentEvent?.id) {
+                getSupabase().then((sb) => {
+                  if (!sb) return;
+                  sb.from("event_members")
+                    .delete()
+                    .eq("event_id", this.state.currentEvent.id)
+                    .or(`user_id.eq.${person.id},id.eq.${person.id}`)
+                    .then(({ error }) => {
+                      if (error) console.warn("[Sangam] Failed to delete member from Supabase:", error);
+                    });
+                });
+              }
               this.state.joinedPeople = this.state.joinedPeople.filter((p) => p.id !== person.id);
               if (this.activeAssignMemberId === person.id) this.activeAssignMemberId = null;
               this.persistState();
