@@ -3,10 +3,9 @@
 // Local factual answers avoid model tokens; Gemini planning stays behind Supabase.
 // ==============================================================================
 
-import { CONFIG } from "./config.js";
+import { CONFIG, isBrowserGeminiTestMode, getBrowserGeminiKey } from "./config.js";
 import { auth } from "./auth.js";
 import { getSupabase, isLive } from "./supabase-client.js";
-import { generateLocalBlueprint } from "./templates.js";
 
 const PLANNING_PATTERN = /\b(create|plan|design|organize|organise|generate|draft|allocate|rebalance|build|prepare)\b/i;
 const TEAM_PATTERN = /\b(team|teams|group|groups|leader|leaders|department|departments)\b/i;
@@ -106,8 +105,11 @@ class SangamAICoordinator {
     return body;
   }
 
-  async callGeminiDirect(prompt, action = "plan_event") {
-    const key = (typeof window !== "undefined" && window.ENV_GEMINI_API_KEY) || "";
+  // TEST-ONLY direct browser call. Used solely when the owner-enabled
+  // testing flag is on and the secure Edge path failed. Never used in
+  // production: the key is readable by any page visitor.
+  async callGeminiDirectForTesting(prompt, action = "plan_event") {
+    const key = getBrowserGeminiKey();
     if (!key) return null;
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`;
     const systemInstruction = action === "plan_event"
@@ -127,7 +129,7 @@ class SangamAICoordinator {
     });
 
     if (!response.ok) {
-      throw new Error(`Direct Gemini API failed (${response.status})`);
+      throw new Error(`Gemini test call failed (${response.status}). Check the testing key, then retry.`);
     }
 
     const data = await response.json();
@@ -142,7 +144,7 @@ class SangamAICoordinator {
         throw new Error("Gemini returned invalid JSON.");
       }
       return {
-        blueprintId: `bp-gemini-${Date.now()}`,
+        blueprintId: `bp-gemini-test-${Date.now()}`,
         blueprint: {
           title: parsed.title || "Custom Planned Event",
           venue: parsed.venue || "Main Convention Center",
@@ -164,50 +166,34 @@ class SangamAICoordinator {
       return { source: "local", label: "Live event data", text: getLocalResponse(prompt, context), route };
     }
 
-    // 1. Try Supabase Edge Function if authenticated session is present
-    if (isLive()) {
-      try {
-        const result = await this.callEdge({ action: route.action, prompt: prompt.trim() });
-        if (route.action === "plan_event") {
-          return { source: "gemini", label: "Gemini plan", blueprintId: result.blueprintId, blueprint: result.blueprint, usage: result.usage || {}, route };
-        }
-        return { source: "gemini", label: "Gemini", text: String(result.text || "Gemini returned no response."), route };
-      } catch (edgeErr) {
-        console.warn("Edge Function unavailable, attempting direct Gemini call or intelligent fallback:", edgeErr.message);
-      }
+    // Production path: real authenticated Supabase manager session via Edge.
+    if (!isLive()) {
+      throw new Error("Sign in with a secure manager session to use Gemini planning.");
+    }
+    const currentUser = auth.getCurrentUser();
+    if (!currentUser || currentUser.role !== "manager") {
+      throw new Error("Only event managers can use Gemini planning.");
     }
 
-    // 2. Try Direct Gemini 2.5 Flash API if key is available in browser env
     try {
-      const direct = await this.callGeminiDirect(prompt.trim(), route.action);
-      if (direct) {
-        if (route.action === "plan_event") {
-          return { source: "gemini", label: "Gemini 2.5 Flash", blueprintId: direct.blueprintId, blueprint: direct.blueprint, usage: direct.usage, route };
-        }
-        return { source: "gemini", label: "Gemini 2.5 Flash", text: direct.text, route };
+      const result = await this.callEdge({ action: route.action, prompt: prompt.trim() });
+      if (route.action === "plan_event") {
+        if (!result.blueprint) throw new Error("Gemini returned no usable blueprint. No event was created.");
+        return { source: "gemini", label: "Gemini plan", blueprintId: result.blueprintId, blueprint: result.blueprint, usage: result.usage || {}, route };
       }
-    } catch (directErr) {
-      console.warn("Direct Gemini call failed, using intelligent local engine:", directErr.message);
+      return { source: "gemini", label: "Gemini", text: String(result.text || "Gemini returned no response."), route };
+    } catch (edgeErr) {
+      // Testing fallback only: owner-enabled flag + browser key. The planner
+      // labels this result so test output is never mistaken for production.
+      if (!isBrowserGeminiTestMode()) throw edgeErr;
+      console.warn("[Sangam] Edge Gemini unavailable, using TEST-ONLY browser key:", edgeErr.message);
+      const direct = await this.callGeminiDirectForTesting(prompt.trim(), route.action);
+      if (route.action === "plan_event") {
+        if (!direct?.blueprint) throw new Error("Gemini returned no usable blueprint. No event was created.");
+        return { source: "gemini", label: "Gemini 2.5 Flash (browser test key)", blueprintId: direct.blueprintId, blueprint: direct.blueprint, usage: direct.usage, route };
+      }
+      return { source: "gemini", label: "Gemini (browser test key)", text: direct.text, route };
     }
-
-    // 3. Fallback to Intelligent Local Blueprint Generator
-    if (route.action === "plan_event") {
-      const localBp = generateLocalBlueprint(prompt.trim(), options.baseTemplateKey || "hackathon");
-      return {
-        source: "local",
-        label: "Intelligent Local Planner",
-        blueprintId: `bp-local-${Date.now()}`,
-        blueprint: localBp,
-        route,
-      };
-    }
-
-    return {
-      source: "local",
-      label: "AI Coordinator",
-      text: "I am ready to plan your event! Choose a template or describe your requirements.",
-      route,
-    };
   }
 
   async applyBlueprint(blueprintId, blueprint) {

@@ -1063,6 +1063,20 @@ body.ai-drawer-open .ai-fab {
 .popover-pin-number { font-family: var(--font-mono, monospace); font-size: 15px; font-weight: 700; letter-spacing: 0.12em; color: var(--text); }
 .btn-copy-pin { padding: 4px 10px; font-size: 11px; font-weight: 600; border-radius: 6px; }
 .popover-change-btn { width: 100%; justify-content: center; padding: 8px 10px; font-size: 12px; font-weight: 500; }
+.session-history-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.session-history-head .section-label { margin: 0; }
+.session-history-count { font-size: 11px; color: var(--muted); }
+.session-history-list { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
+.session-history-empty { font-size: 12px; color: var(--muted); margin: 0; }
+.session-history-item { display: flex; align-items: center; gap: 10px; background: var(--bg); border: 1px solid var(--border-soft); border-radius: 10px; padding: 8px 10px; cursor: default; }
+.session-history-item.is-current { border-color: var(--live, #16a34a); background: #f0fdf4; }
+.session-history-item[role="button"] { cursor: pointer; }
+.session-history-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.session-history-title { font-size: 12.5px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.session-history-meta { font-size: 11px; color: var(--muted); line-height: 1.35; }
+.session-history-sub { font-size: 11px; color: var(--muted); }
+.session-history-switch { flex-shrink: 0; }
+.session-history-current-badge { flex-shrink: 0; font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: var(--live, #15803d); background: #dcfce7; border-radius: 999px; padding: 3px 8px; }
 
 /* Role List & Buttons */
 .role-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -1823,4 +1837,51 @@ body.modal-open {
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+/* Shared programme sync notice: connection state, persistent save failures
+   with Retry, and manager-only one-time recovery (never auto-merges). */
+.sync-notice {
+  background: #fffbeb;
+  border: 1px solid #fcd34d;
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  box-shadow: var(--shadow);
+}
+.sync-notice-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.sync-notice-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand-orange-deep);
+  flex: none;
+}
+.sync-notice-text {
+  margin: 0;
+  flex: 1;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+.sync-recovery {
+  margin-top: 10px;
+  border-top: 1px dashed #fcd34d;
+  padding-top: 10px;
+}
+.sync-recovery-text {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-sub);
+}
+.sync-recovery-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
 }

@@ -8,6 +8,36 @@ const envKey = typeof window !== "undefined" && window.ENV_SUPABASE_ANON_KEY;
 const localUrl = typeof localStorage !== "undefined" && localStorage.getItem("sangam_supabase_url");
 const localKey = typeof localStorage !== "undefined" && localStorage.getItem("sangam_supabase_anon_key");
 
+// Security boundary: Gemini API keys belong in Supabase Edge Function
+// secrets. A browser key is readable by any page visitor, so it is kept ONLY
+// while the owner-accepted testing flag is explicitly enabled, and it is
+// dropped otherwise so no code path can pick it up.
+export function isBrowserGeminiTestMode() {
+  if (typeof window === "undefined") return false;
+  return window.ENV_ALLOW_BROWSER_GEMINI_TESTING === true && Boolean(window.ENV_GEMINI_API_KEY);
+}
+
+export function getBrowserGeminiKey() {
+  return isBrowserGeminiTestMode() && typeof window !== "undefined" ? window.ENV_GEMINI_API_KEY : "";
+}
+
+if (typeof window !== "undefined" && window.ENV_GEMINI_API_KEY && !isBrowserGeminiTestMode()) {
+  console.warn(
+    "[Sangam] Ignoring window.ENV_GEMINI_API_KEY: set window.ENV_ALLOW_BROWSER_GEMINI_TESTING = true only for temporary local testing; production must use the Edge Function secret. See SETUP.md."
+  );
+  try {
+    delete window.ENV_GEMINI_API_KEY;
+  } catch {
+    window.ENV_GEMINI_API_KEY = undefined;
+  }
+}
+
+if (isBrowserGeminiTestMode()) {
+  console.warn(
+    "[Sangam] Browser Gemini TEST MODE is on: API calls go directly from this browser with a readable key. Temporary testing only — revoke the key and disable the flag before any shared or production use."
+  );
+}
+
 export const CONFIG = {
   SUPABASE_URL:
     (envUrl && !envUrl.includes("xyzcompany")) ? envUrl :
@@ -74,7 +104,96 @@ export const STORAGE_KEYS = {
   MESSAGES: "sangam_messages",
   ACTIVE_VIEW: "sangam_active_view",
   ROLE_SLOTS: "sangam_role_slots",
+  ALL_EVENTS: "sangam_all_events",
+  EVENT_SNAPSHOTS: "sangam_event_snapshots"
 };
+
+function readJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function writeJson(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn("Storage write failed", e);
+  }
+}
+
+export function normalizeHistoryEntry(event, managerId = null) {
+  if (!event || !event.id) return null;
+  const code = event.sixDigitCode || event.six_digit_code || "";
+  return {
+    id: event.id,
+    title: event.title || "Untitled Event",
+    venue: event.venue || "TBD",
+    sixDigitCode: code,
+    six_digit_code: code,
+    status: event.status || "active",
+    manager_id: event.manager_id || event.managerId || managerId || null,
+    managerId: event.managerId || event.manager_id || managerId || null,
+    created_at: event.created_at || event.createdAt || new Date().toISOString(),
+  };
+}
+
+export function getAllStoredEvents() {
+  const list = readJson(STORAGE_KEYS.ALL_EVENTS, []);
+  return Array.isArray(list) ? list : [];
+}
+
+export function getManagerEventHistory(managerId) {
+  const all = getAllStoredEvents();
+  if (!managerId) return all;
+  return all.filter((e) => (e.manager_id || e.managerId) === managerId || !(e.manager_id || e.managerId));
+}
+
+export function saveEventToHistory(entry, snapshot = null) {
+  const normalized = normalizeHistoryEntry(entry, entry?.manager_id || entry?.managerId);
+  if (!normalized) return null;
+  const all = getAllStoredEvents();
+  const idx = all.findIndex((e) => e.id === normalized.id);
+  const merged = { ...(idx >= 0 ? all[idx] : {}), ...normalized };
+  if (idx >= 0) all[idx] = merged;
+  else all.push(merged);
+  writeJson(STORAGE_KEYS.ALL_EVENTS, all);
+  if (snapshot) {
+    const snaps = readJson(STORAGE_KEYS.EVENT_SNAPSHOTS, {});
+    snaps[normalized.id] = snapshot;
+    writeJson(STORAGE_KEYS.EVENT_SNAPSHOTS, snaps);
+  }
+  return merged;
+}
+
+export function getEventSnapshot(eventId) {
+  if (!eventId) return null;
+  const snaps = readJson(STORAGE_KEYS.EVENT_SNAPSHOTS, {});
+  return snaps[eventId] || null;
+}
+
+export function saveEventSnapshot(eventId, snapshot) {
+  if (!eventId) return;
+  const snaps = readJson(STORAGE_KEYS.EVENT_SNAPSHOTS, {});
+  snaps[eventId] = snapshot;
+  writeJson(STORAGE_KEYS.EVENT_SNAPSHOTS, snaps);
+}
+
+export function clearActiveWorkspaceStorage() {
+  try {
+    localStorage.removeItem(STORAGE_KEYS.CURRENT_EVENT);
+    localStorage.removeItem(STORAGE_KEYS.PROGRAMMES);
+    localStorage.removeItem(STORAGE_KEYS.GROUPS);
+    localStorage.removeItem(STORAGE_KEYS.JOINED_PEOPLE);
+    localStorage.removeItem(STORAGE_KEYS.MESSAGES);
+    localStorage.removeItem(STORAGE_KEYS.ROLE_SLOTS);
+  } catch (e) {
+    console.warn("Could not clear active workspace storage:", e);
+  }
+}
 
 // Initialize or Load Local Storage State
 export function getLocalState() {

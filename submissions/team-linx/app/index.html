@@ -236,6 +236,20 @@
         </header>
 
         <main class="workspace-content" id="workspace-content" tabindex="-1">
+          <div class="sync-notice" id="programme-sync-notice" role="status" aria-live="polite" hidden>
+            <div class="sync-notice-row">
+              <span class="sync-notice-dot" aria-hidden="true"></span>
+              <p class="sync-notice-text" id="programme-sync-text"></p>
+              <button type="button" class="btn-light btn-small" id="programme-sync-retry" hidden>Retry</button>
+            </div>
+            <div class="sync-recovery" id="programme-sync-recovery" hidden>
+              <p class="sync-recovery-text" id="programme-sync-recovery-text"></p>
+              <div class="sync-recovery-actions">
+                <button type="button" class="btn-dark btn-small" id="programme-sync-publish">Publish my schedule</button>
+                <button type="button" class="btn-light btn-small" id="programme-sync-dismiss">Keep shared version</button>
+              </div>
+            </div>
+          </div>
           <!-- Dashboard -->
           <div class="workspace-page" id="page-dashboard" role="region" aria-label="Dashboard">
             <div class="dashboard-grid">
@@ -458,6 +472,15 @@
           <p class="popover-helper-text">Share this 6-digit PIN with team members to let them join this event lobby.</p>
           <button class="btn-light btn-small popover-change-btn" id="btn-side-back-gateway" type="button">← Change / Find Event</button>
         </div>
+      </div>
+
+      <!-- Section 3: Manager event history -->
+      <div class="popover-section">
+        <div class="session-history-head">
+          <p class="section-label">My Events</p>
+          <span class="session-history-count" id="session-history-count">No events yet</span>
+        </div>
+        <div class="session-history-list" id="session-history-list" role="list" aria-label="Manager event history"></div>
       </div>
 
       <!-- Footer Action: Logout Button -->

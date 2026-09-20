@@ -3,7 +3,7 @@
 // Team LINX - Kraft Night 2026
 // =============================================================================
 
-import { getLocalState, saveLocalState, createDefaultGeneralGroup } from "./config.js";
+import { getLocalState, saveLocalState, createDefaultGeneralGroup, STORAGE_KEYS, getManagerEventHistory as getLocalManagerHistory, saveEventToHistory, getEventSnapshot, saveEventSnapshot, clearActiveWorkspaceStorage } from "./config.js";
 import { auth } from "./auth.js";
 import { taskManager } from "./tasks.js";
 import { chatManager } from "./chat.js";
@@ -54,6 +54,21 @@ function statusPill(status) {
   return { cls: "soon", label: "Soon" };
 }
 
+function programmeFingerprint(programmes = []) {
+  return programmes
+    .map((programme) => [
+      programme.title || "",
+      programme.startTime || programme.start_time || "",
+      programme.endTime || programme.end_time || "",
+      programme.venue || programme.venueOrStage || "",
+      programme.description || "",
+      programme.status || "scheduled",
+      programme.leadGroup || "",
+    ].join("\u0000"))
+    .sort()
+    .join("\u0001");
+}
+
 function normalizeView(viewId) {
   if (viewId === "chat") return "groups";
   if (ALL_VIEWS.includes(viewId)) return viewId;
@@ -100,7 +115,16 @@ class AppController {
       this.renderProgramsPage();
       this.renderAbout();
       this.updateStats();
+      this.checkForScheduleMismatch();
     });
+    if (typeof taskManager.onSyncChange === "function") {
+      taskManager.onSyncChange(() => {
+        this.renderProgrammeSyncNotice();
+        this.checkForScheduleMismatch();
+      });
+    }
+    this.bindProgrammeSyncNotice();
+    this.activateProgrammeSyncForCurrentEvent();
     this.updateHeaderDate();
     this.switchView(this.currentView, { skipSave: true });
     this.updateEventDisplay();
@@ -134,9 +158,495 @@ class AppController {
     saveLocalState(this.state);
   }
 
+  buildCurrentSnapshot() {
+    return {
+      event: this.state.currentEvent ? { ...this.state.currentEvent } : null,
+      groups: Array.isArray(this.state.groups) ? [...this.state.groups] : [],
+      programmes: taskManager.getProgrammes ? [...taskManager.getProgrammes()] : [...(this.state.programmes || [])],
+      joinedPeople: Array.isArray(this.state.joinedPeople) ? [...this.state.joinedPeople] : [],
+      messages: chatManager.messages ? JSON.parse(JSON.stringify(chatManager.messages)) : { ...(this.state.messages || {}) },
+      roleSlots: Array.isArray(this.state.roleSlots) ? [...this.state.roleSlots] : [],
+    };
+  }
+
+  persistCurrentSnapshot() {
+    const evt = this.state.currentEvent;
+    if (!evt || !evt.id) return;
+    try {
+      saveEventToHistory(evt, this.buildCurrentSnapshot());
+    } catch (e) {
+      console.warn("Could not persist current event snapshot:", e);
+    }
+  }
+
+  // ---------------------------------------------------------- programme sync
+  // Single authority: Supabase owns the active event schedule when live.
+  // Capture the manager's pre-refresh list so a reviewed one-time publish can
+  // reconcile divergent caches without ever auto-merging or resurrecting
+  // deleted rows.
+  captureManagerScheduleBackup() {
+    try {
+      const evtId = this.state.currentEvent?.id || null;
+      if (!evtId || auth.getCurrentUser()?.role !== "manager") return;
+      const current = taskManager.getProgrammes ? [...taskManager.getProgrammes()] : [];
+      if (!current.length) return;
+      this.managerScheduleBackup = {
+        eventId: evtId,
+        programmes: current,
+        capturedAt: new Date().toISOString(),
+      };
+    } catch {}
+  }
+
+  async activateProgrammeSyncForCurrentEvent() {
+    try {
+      const evtId = this.state.currentEvent?.id || null;
+      if (!evtId) {
+        if (typeof taskManager.clearActiveEvent === "function") taskManager.clearActiveEvent();
+        this.renderProgrammeSyncNotice();
+        return;
+      }
+      // Capture before the authoritative server refresh replaces local rows.
+      if (isLive() && auth.getCurrentUser()?.role === "manager") {
+        const localCount = taskManager.getProgrammes ? taskManager.getProgrammes().length : 0;
+        if (localCount > 0 && !this.managerScheduleBackup) {
+          this.captureManagerScheduleBackup();
+        }
+      }
+      if (typeof taskManager.setActiveEvent === "function") {
+        await taskManager.setActiveEvent(evtId);
+      }
+      this.renderProgrammeSyncNotice();
+      this.checkForScheduleMismatch();
+    } catch (e) {
+      console.warn("[Sangam] Programme sync activation failed:", e);
+    }
+  }
+
+  bindProgrammeSyncNotice() {
+    if (this.programmeSyncBound) return;
+    this.programmeSyncBound = true;
+    document.addEventListener("click", (e) => {
+      const retryBtn = e.target?.closest?.("#programme-sync-retry");
+      if (retryBtn) {
+        e.preventDefault();
+        retryBtn.disabled = true;
+        Promise.resolve()
+          .then(() => taskManager.retryPendingOperation
+            ? taskManager.retryPendingOperation()
+            : taskManager.refreshActiveEvent?.())
+          .catch((err) => console.warn("[Sangam] Programme retry failed:", err))
+          .finally(() => { retryBtn.disabled = false; });
+        return;
+      }
+      const publishBtn = e.target?.closest?.("#programme-sync-publish");
+      if (publishBtn) {
+        e.preventDefault();
+        this.publishManagerSchedule();
+        return;
+      }
+      const dismissBtn = e.target?.closest?.("#programme-sync-dismiss");
+      if (dismissBtn) {
+        e.preventDefault();
+        this.managerScheduleBackup = null;
+        if (typeof taskManager.clearLocalBeforeServerSyncBackup === "function") {
+          taskManager.clearLocalBeforeServerSyncBackup();
+        }
+        this.renderProgrammeSyncNotice();
+      }
+    });
+  }
+
+  checkForScheduleMismatch() {
+    if (!isLive()) return;
+    if (auth.getCurrentUser()?.role !== "manager") return;
+    const evtId = this.state.currentEvent?.id || null;
+    if (!evtId) return;
+    const sync = typeof taskManager.getSyncSnapshot === "function" ? taskManager.getSyncSnapshot() : null;
+    if (sync?.syncState !== "live") return;
+    const serverProgrammes = taskManager.getProgrammes ? taskManager.getProgrammes() : [];
+    const backup = this.managerScheduleBackup?.eventId === evtId
+      ? this.managerScheduleBackup
+      : null;
+    const taskBackup = typeof taskManager.getLastLocalBeforeServerSync === "function"
+      ? taskManager.getLastLocalBeforeServerSync()
+      : null;
+    const candidate = backup || (taskBackup?.length ? { eventId: evtId, programmes: taskBackup } : null);
+    if (candidate && programmeFingerprint(candidate.programmes) !== programmeFingerprint(serverProgrammes)) {
+      if (!this.managerScheduleBackup) this.managerScheduleBackup = candidate;
+      this.renderProgrammeSyncNotice();
+    } else if (candidate) {
+      // A backup made during ordinary event creation/switching matches the
+      // shared schedule, so it must not become a later false recovery prompt.
+      this.managerScheduleBackup = null;
+      if (typeof taskManager.clearLocalBeforeServerSyncBackup === "function") {
+        taskManager.clearLocalBeforeServerSyncBackup();
+      }
+    }
+  }
+
+  renderProgrammeSyncNotice() {
+    const box = document.getElementById("programme-sync-notice");
+    if (!box) return;
+    const textEl = document.getElementById("programme-sync-text");
+    const retryBtn = document.getElementById("programme-sync-retry");
+    const recoveryEl = document.getElementById("programme-sync-recovery");
+    const recoveryText = document.getElementById("programme-sync-recovery-text");
+    const publishBtn = document.getElementById("programme-sync-publish");
+    const snap = typeof taskManager.getSyncSnapshot === "function" ? taskManager.getSyncSnapshot() : null;
+    const err = taskManager.getLastSyncError ? taskManager.getLastSyncError() : null;
+    const evtId = this.state.currentEvent?.id || null;
+    const backup = this.managerScheduleBackup?.eventId === evtId ? this.managerScheduleBackup : null;
+    const serverProgrammes = taskManager.getProgrammes ? taskManager.getProgrammes() : [];
+    const serverCount = serverProgrammes.length;
+    const isManager = auth.getCurrentUser()?.role === "manager";
+
+    let visible = false;
+    let message = "";
+    if (err?.message) {
+      visible = true;
+      message = err.message;
+    } else if (snap && evtId && isLive()) {
+      if (snap.syncState === "loading") {
+        visible = true;
+        message = "Loading the shared schedule…";
+      } else if (snap.syncState === "error" && !err) {
+        visible = true;
+        message = "Live schedule updates paused. Retry to reconnect.";
+      }
+    }
+    if (!isLive() || !evtId) {
+      visible = false;
+      message = "";
+    }
+    box.hidden = !visible && !(backup && isManager);
+    if (textEl) textEl.textContent = message || "";
+    if (retryBtn) {
+      const showRetry = Boolean(err) || snap?.syncState === "error" || snap?.syncState === "loading";
+      retryBtn.hidden = !showRetry || !isLive() || !evtId;
+      retryBtn.textContent = err?.actionLabel || "Retry";
+    }
+    // Manager-only recovery: reviewed publish, never auto-merge.
+    if (recoveryEl) {
+      const showRecovery = Boolean(
+        backup && isManager && isLive() && evtId
+        && programmeFingerprint(backup.programmes) !== programmeFingerprint(serverProgrammes)
+      );
+      recoveryEl.hidden = !showRecovery;
+      if (showRecovery) {
+        if (recoveryText) {
+          recoveryText.textContent = `This device held ${backup.programmes.length} programme(s) before the shared schedule loaded (${serverCount} on the server). Review your list, then publish it once to replace the server schedule. Deleted items stay deleted.`;
+        }
+        if (publishBtn) {
+          publishBtn.textContent = `Publish my ${backup.programmes.length} programme(s) to shared schedule`;
+        }
+      }
+    }
+  }
+
+  async publishManagerSchedule() {
+    const evtId = this.state.currentEvent?.id || null;
+    const backup = this.managerScheduleBackup?.eventId === evtId ? this.managerScheduleBackup : null;
+    if (!evtId || !backup) return;
+    if (auth.getCurrentUser()?.role !== "manager") {
+      alert("Only the Event Manager can publish the schedule.");
+      return;
+    }
+    const count = backup.programmes.length;
+    const confirmed = window.confirm(
+      `Publish your reviewed schedule (${count} programme(s)) to the shared event? This REPLACES the server schedule — it never merges. Deleted items stay deleted.`
+    );
+    if (!confirmed) return;
+    const publishBtn = document.getElementById("programme-sync-publish");
+    if (publishBtn) publishBtn.disabled = true;
+    try {
+      if (!isLive()) throw new Error("Live backend is not connected.");
+      const sb = await getSupabase();
+      if (!sb) throw new Error("Could not connect to Supabase.");
+      const payload = backup.programmes.map((p) => ({
+        title: p.title,
+        description: p.description || "",
+        startTime: p.startTime || p.start_time || "10:00",
+        endTime: p.endTime || p.end_time || p.startTime || "10:00",
+        venue: p.venue || p.venueOrStage || "Main Stage",
+        status: p.status || "scheduled",
+        leadGroup: p.leadGroup || "General Coordination",
+      }));
+      const { data, error } = await sb.rpc("replace_event_programmes", {
+        p_event_id: evtId,
+        p_programmes: payload,
+      });
+      if (error) throw error;
+      this.managerScheduleBackup = null;
+      if (typeof taskManager.clearLocalBeforeServerSyncBackup === "function") {
+        taskManager.clearLocalBeforeServerSyncBackup();
+      }
+      await taskManager.refreshActiveEvent?.();
+      this.persistState();
+      this.renderProgrammeSyncNotice();
+      alert(`Shared schedule published (${Array.isArray(data) ? data.length : count} programme(s)). All devices now load this list.`);
+    } catch (err) {
+      console.warn("[Sangam] Schedule publish failed:", err);
+      alert(`Could not publish the schedule: ${err?.message || err}`);
+    } finally {
+      if (publishBtn) publishBtn.disabled = false;
+      this.renderProgrammeSyncNotice();
+    }
+  }
+
+  clearActiveWorkspacePreservingHistory() {
+    // Preserve the outgoing event before clearing so it stays selectable.
+    this.persistCurrentSnapshot();
+    this.state.currentEvent = null;
+    this.state.groups = [];
+    this.state.joinedPeople = [];
+    this.state.messages = {};
+    this.state.roleSlots = [];
+    this.state.programmes = [];
+    this.managerScheduleBackup = null;
+    try {
+      taskManager.setProgrammes([]);
+      if (typeof taskManager.clearActiveEvent === "function") taskManager.clearActiveEvent();
+      if (typeof taskManager.clearLocalBeforeServerSyncBackup === "function") taskManager.clearLocalBeforeServerSyncBackup();
+      chatManager.setMessages({});
+      chatManager.setActiveGroup("grp-general");
+    } catch (e) {
+      console.warn("Could not reset programme/chat managers:", e);
+    }
+    clearActiveWorkspaceStorage();
+    this.persistState();
+    this.updateEventDisplay();
+    if (typeof this.renderSessionHistory === "function") {
+      try { this.renderSessionHistory(); } catch {}
+    }
+  }
+
+  async fetchManagerHistoryFromSupabase(managerId) {
+    if (!isLive() || !managerId) return null;
+    try {
+      const sb = await getSupabase();
+      if (!sb) return null;
+      const { data, error } = await sb.from("events").select("*").eq("manager_id", managerId).order("created_at", { ascending: false });
+      if (error) return null;
+      return (data || []).map((row) => ({
+        id: row.id,
+        title: row.title,
+        venue: row.venue || "TBD",
+        sixDigitCode: row.six_digit_code,
+        six_digit_code: row.six_digit_code,
+        status: row.status || "active",
+        manager_id: row.manager_id,
+        managerId: row.manager_id,
+        created_at: row.created_at,
+      }));
+    } catch {
+      return null;
+    }
+  }
+
+  async getManagerHistoryList() {
+    const user = auth.getCurrentUser();
+    const managerId = user?.id || null;
+    const local = getLocalManagerHistory(managerId);
+    if (!isLive()) return local;
+    const remote = await this.fetchManagerHistoryFromSupabase(managerId);
+    if (!remote) return local;
+    // Merge remote into local cache without deleting other managers' entries.
+    try {
+      const allRaw = localStorage.getItem(STORAGE_KEYS.ALL_EVENTS);
+      const all = allRaw ? JSON.parse(allRaw) : [];
+      const byId = new Map(all.map((e) => [e.id, e]));
+      for (const entry of remote) byId.set(entry.id, { ...(byId.get(entry.id) || {}), ...entry });
+      localStorage.setItem(STORAGE_KEYS.ALL_EVENTS, JSON.stringify([...byId.values()]));
+    } catch {}
+    return remote;
+  }
+
+  async fetchEventSnapshotFromSupabase(eventId) {
+    const sb = await getSupabase();
+    if (!sb || !eventId) return null;
+    try {
+      const [{ data: evt }, { data: groups }, { data: members }, { data: programmes }, { data: roleSlots }] = await Promise.all([
+        sb.from("events").select("*").eq("id", eventId).single(),
+        sb.from("event_groups").select("*").eq("event_id", eventId),
+        sb.from("event_members").select("*").eq("event_id", eventId),
+        sb.from("programmes").select("*").eq("event_id", eventId).order("start_time", { ascending: true }),
+        sb.from("event_role_slots").select("*").eq("event_id", eventId),
+      ]);
+      if (!evt) return null;
+      const event = {
+        id: evt.id,
+        title: evt.title,
+        venue: evt.venue || "TBD",
+        sixDigitCode: evt.six_digit_code,
+        six_digit_code: evt.six_digit_code,
+        status: evt.status || "active",
+        manager_id: evt.manager_id,
+        managerId: evt.manager_id,
+        created_at: evt.created_at,
+      };
+      const mappedGroups = (groups || []).map((g) => ({
+        id: g.id, eventId, event_id: eventId, name: g.name, icon: g.icon || "📁",
+        description: g.description, leaderId: g.leader_id || null, leaderName: g.leader_name || null,
+      }));
+      const mappedPeople = (members || []).map((m) => ({
+        id: m.user_id || m.id, name: m.name, email: m.email || "", role: m.role || "volunteer",
+        roleBadge: m.role_badge || m.role, groupId: m.assigned_group_id || null, groupName: m.group_name || "",
+        status: m.status || "active", avatar: m.avatar || null,
+      }));
+      const mappedProgrammes = (programmes || []).map((p) => ({
+        id: p.id, eventId, event_id: eventId, title: p.title, description: p.description || "",
+        startTime: p.start_time, endTime: p.end_time, start_time: p.start_time, end_time: p.end_time,
+        venue: p.venue || "Main Stage", venueOrStage: p.venue || "Main Stage", status: p.status || "scheduled",
+      }));
+      const groupIdByRemoteId = new Map(mappedGroups.map((g, idx) => [g.id, idx]));
+      const mappedSlots = (roleSlots || []).map((r) => ({
+        title: r.title, responsibility: r.responsibility || "",
+        ...(r.group_id && groupIdByRemoteId.has(r.group_id) ? { groupIndex: groupIdByRemoteId.get(r.group_id) } : {}),
+      }));
+      const snapshot = { event, groups: mappedGroups, programmes: mappedProgrammes, joinedPeople: mappedPeople, messages: {}, roleSlots: mappedSlots };
+      // Preserve any locally cached chat for this event.
+      const localSnap = getEventSnapshot(eventId);
+      if (localSnap?.messages && Object.keys(localSnap.messages).length) snapshot.messages = localSnap.messages;
+      return snapshot;
+    } catch (e) {
+      console.warn("Supabase snapshot fetch failed:", e);
+      return null;
+    }
+  }
+
+  applySnapshotToWorkspace(snapshot) {
+    if (!snapshot || !snapshot.event) throw new Error("That event could not be opened.");
+    if (isLive() && auth.getCurrentUser()?.role === "manager" && snapshot?.event?.id !== this.state.currentEvent?.id) {
+      this.captureManagerScheduleBackup();
+    }
+    this.state.currentEvent = snapshot.event;
+    this.state.groups = snapshot.groups || [];
+    this.state.joinedPeople = snapshot.joinedPeople || [];
+    this.state.messages = snapshot.messages || {};
+    this.state.roleSlots = snapshot.roleSlots || [];
+    taskManager.setProgrammes(snapshot.programmes || []);
+    this.state.programmes = taskManager.getProgrammes();
+    // Rebind the filtered live subscription; when live, the server refresh is
+    // authoritative (empty server schedule clears stale local rows).
+    this.activateProgrammeSyncForCurrentEvent();
+    chatManager.setMessages(this.state.messages);
+    if (this.state.groups.length) chatManager.setActiveGroup(this.state.groups[0].id);
+    this.persistState();
+    try {
+      saveEventSnapshot(snapshot.event.id, snapshot);
+    } catch {}
+    this.updateEventDisplay();
+    this.renderDashboard();
+    this.renderAssignRoles();
+    this.renderProgramsPage();
+    this.renderChatChannels();
+    this.renderAbout();
+    this.updateStats();
+    this.renderSessionHistory();
+  }
+
+  async switchToHistoricalEvent(eventId) {
+    if (!eventId) return;
+    if (this.state.currentEvent?.id === eventId) return;
+    this.persistCurrentSnapshot();
+    let snapshot = null;
+    if (isLive()) snapshot = await this.fetchEventSnapshotFromSupabase(eventId);
+    if (!snapshot) snapshot = getEventSnapshot(eventId);
+    if (!snapshot) {
+      const all = getLocalManagerHistory(auth.getCurrentUser()?.id);
+      const entry = all.find((e) => e.id === eventId);
+      if (entry) {
+        snapshot = {
+          event: { ...entry, sixDigitCode: entry.sixDigitCode || entry.six_digit_code },
+          groups: [], programmes: [], joinedPeople: [], messages: {}, roleSlots: [],
+        };
+      }
+    }
+    if (!snapshot) throw new Error("That event could not be opened.");
+    this.applySnapshotToWorkspace(snapshot);
+    this.closePopover();
+    this.switchView("dashboard", { preserveWorkspace: true });
+  }
+
+  renderSessionHistory() {
+    const listEl = document.getElementById("session-history-list");
+    const countEl = document.getElementById("session-history-count");
+    if (!listEl) return;
+    const user = auth.getCurrentUser();
+    const entries = getLocalManagerHistory(user?.id);
+    const currentId = this.state.currentEvent?.id || null;
+    const sorted = [...entries].sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
+    if (countEl) countEl.textContent = sorted.length ? `${sorted.length} event${sorted.length === 1 ? "" : "s"}` : "No events yet";
+    if (!sorted.length) {
+      listEl.innerHTML = '<p class="session-history-empty">Events you create appear here.</p>';
+      return;
+    }
+    listEl.innerHTML = "";
+    for (const entry of sorted) {
+      const code = entry.sixDigitCode || entry.six_digit_code || "—";
+      const isCurrent = entry.id === currentId;
+      const item = document.createElement("div");
+      item.className = `session-history-item${isCurrent ? " is-current" : ""}`;
+      const date = entry.created_at ? new Date(entry.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+      item.innerHTML = `<div class="session-history-main"><strong class="session-history-title"></strong><span class="session-history-meta"></span><span class="session-history-sub"></span></div>`;
+      item.querySelector(".session-history-title").textContent = entry.title || "Untitled Event";
+      item.querySelector(".session-history-meta").textContent = `${entry.venue || "TBD"} · PIN ${code} · ${entry.status || "active"} · ${date}`;
+      item.querySelector(".session-history-sub").textContent = isCurrent ? "Current event" : "Switch to event";
+      if (!isCurrent) {
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "btn-light btn-small session-history-switch";
+        btn.textContent = "Switch";
+        btn.setAttribute("aria-label", `Switch to ${entry.title}`);
+        btn.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          btn.disabled = true;
+          try {
+            await this.switchToHistoricalEvent(entry.id);
+          } catch (err) {
+            console.warn("Event switch failed:", err);
+            alert(err.message || "That event could not be opened.");
+            btn.disabled = false;
+          }
+        });
+        item.appendChild(btn);
+        item.setAttribute("role", "button");
+        item.setAttribute("tabindex", "0");
+        item.addEventListener("click", () => btn.click());
+        item.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            btn.click();
+          }
+        });
+      } else {
+        const badge = document.createElement("span");
+        badge.className = "session-history-current-badge";
+        badge.textContent = "Current";
+        item.appendChild(badge);
+      }
+      listEl.appendChild(item);
+    }
+    // Refresh from Supabase in the background for cross-device history.
+    if (isLive()) {
+      this.getManagerHistoryList().then((remote) => {
+        if (Array.isArray(remote) && document.getElementById("session-history-list") === listEl) {
+          const fresh = getLocalManagerHistory(user?.id);
+          if (fresh.length !== sorted.length) this.renderSessionHistory();
+        }
+      }).catch(() => {});
+    }
+  }
+
   switchView(viewId, opts = {}) {
     const next = normalizeView(viewId);
+    const prev = this.currentView;
+    const enteringGateway = next === "gateway" && !opts.skipSave && !opts.preserveWorkspace && WORKSPACE_PAGES.includes(prev);
     this.currentView = next;
+    if (enteringGateway) {
+      this.clearActiveWorkspacePreservingHistory();
+    }
     if (!opts.skipSave) {
       this.state.activeView = next;
       this.persistState();
@@ -178,6 +688,15 @@ class AppController {
       gateway.classList.toggle("active", next === "gateway");
       gateway.hidden = next !== "gateway";
       this.updateGatewayUserDisplay();
+      if (next === "gateway") {
+        const titleInput = document.getElementById("input-event-title");
+        if (titleInput && enteringGateway) titleInput.value = "";
+        try {
+          if (eventPlanner && typeof eventPlanner.close === "function" && eventPlanner.isOpen?.()) {
+            eventPlanner.close();
+          }
+        } catch {}
+      }
     }
     if (workspace) {
       workspace.classList.toggle("active", inWorkspace);
@@ -851,6 +1370,7 @@ class AppController {
         const curUser = auth.getCurrentUser();
         if (curUser) this.handleUserRoleChanged(curUser);
         this.updateEventDisplay();
+        this.renderSessionHistory();
       }
     });
     if (close) close.addEventListener("click", () => this.closePopover());
@@ -876,10 +1396,17 @@ class AppController {
   logout() {
     this.closePopover();
     this.closeDrawers();
+    try {
+      if (typeof taskManager.clearActiveEvent === "function") taskManager.clearActiveEvent();
+    } catch {}
     if (this.membersRealtimeChannel) {
       this.membersRealtimeChannel.unsubscribe();
       this.membersRealtimeChannel = null;
     }
+    // Preserve history, but never leave the active workspace for the next sign-in.
+    try {
+      this.clearActiveWorkspacePreservingHistory();
+    } catch {}
     auth.logout();
     this.switchView("login");
   }
@@ -933,18 +1460,23 @@ class AppController {
 
         let eventId = "evt-" + Date.now();
         let generalGroupId = "grp-general";
+        let liveClient = null;
+        let liveEventId = null;
 
         if (isLive()) {
           try {
             const sb = await getSupabase();
+            if (!sb) throw new Error("Could not connect to Supabase.");
+            liveClient = sb;
             if (sb) {
-              await sb.from("profiles").upsert({
+              const { error: profileErr } = await sb.from("profiles").upsert({
                 id: currentUser.id,
                 full_name: currentUser.name,
                 email: currentUser.email || `${currentUser.name.toLowerCase().replace(/[^a-z0-9]+/g, ".")}@sangam.app`,
                 role: "manager",
                 department: "Event Organizer"
               });
+              if (profileErr) throw profileErr;
 
               const { data: createdEvt, error: evtErr } = await sb
                 .from("events")
@@ -958,11 +1490,9 @@ class AppController {
                 .select()
                 .single();
 
-              if (!evtErr && createdEvt) {
-                eventId = createdEvt.id;
-              } else if (evtErr) {
-                console.warn("[Sangam] Supabase event insert error:", evtErr);
-              }
+              if (evtErr || !createdEvt) throw evtErr || new Error("Supabase did not create the event.");
+              eventId = createdEvt.id;
+              liveEventId = eventId;
 
               const { data: createdGrp, error: grpErr } = await sb
                 .from("event_groups")
@@ -978,11 +1508,10 @@ class AppController {
                 .select()
                 .single();
 
-              if (!grpErr && createdGrp) {
-                generalGroupId = createdGrp.id;
-              }
+              if (grpErr || !createdGrp) throw grpErr || new Error("Supabase did not create the general group.");
+              generalGroupId = createdGrp.id;
 
-              await sb.from("event_members").insert({
+              const { error: memberErr } = await sb.from("event_members").insert({
                 event_id: eventId,
                 user_id: currentUser.id,
                 name: currentUser.name,
@@ -993,11 +1522,17 @@ class AppController {
                 group_name: "General Announcements",
                 status: "active"
               });
+              if (memberErr) throw memberErr;
 
               sb.from("profiles").update({ role: "manager" }).eq("id", currentUser.id).then(() => {}).catch(() => {});
             }
           } catch (err) {
             console.warn("[Sangam] Failed to persist event to Supabase:", err);
+            if (liveClient && liveEventId) {
+              try { await liveClient.from("events").delete().eq("id", liveEventId); } catch {}
+            }
+            alert(`Could not create the shared event: ${err?.message || err}`);
+            return;
           }
         }
 
@@ -1035,6 +1570,7 @@ class AppController {
           avatar: currentUser.avatar
         };
 
+        this.persistCurrentSnapshot();
         this.state.currentEvent = newEvent;
         this.initLiveMembersSync();
         this.state.programmes = [];
@@ -1044,13 +1580,23 @@ class AppController {
         this.state.roleSlots = [];
 
         taskManager.setProgrammes([]);
+        this.managerScheduleBackup = null;
+        if (typeof taskManager.clearLocalBeforeServerSyncBackup === "function") {
+          taskManager.clearLocalBeforeServerSyncBackup();
+        }
         chatManager.setActiveGroup(generalGroupId);
         chatManager.setMessages({ [generalGroupId]: [] });
+        this.activateProgrammeSyncForCurrentEvent();
 
         try {
-          const allEvents = JSON.parse(localStorage.getItem("sangam_all_events") || "[]");
-          allEvents.push(newEvent);
-          localStorage.setItem("sangam_all_events", JSON.stringify(allEvents));
+          saveEventToHistory(newEvent, {
+            event: newEvent,
+            groups: [generalGroup],
+            programmes: [],
+            joinedPeople: [managerMember],
+            messages: { [generalGroupId]: [] },
+            roleSlots: [],
+          });
         } catch (err) {
           console.warn("Could not save to sangam_all_events:", err);
         }
@@ -1239,6 +1785,9 @@ class AppController {
       } catch (err) {
         console.warn("[Sangam] Supabase client unavailable:", err);
       }
+      if (!sb) {
+        throw new Error("Could not connect to Supabase. No local-only event was created.");
+      }
       if (sb) {
         const rollback = async () => {
           try {
@@ -1361,6 +1910,7 @@ class AppController {
       avatar: currentUser.avatar,
     };
 
+    this.persistCurrentSnapshot();
     this.state.currentEvent = newEvent;
     this.state.groups = mappedGroups;
     this.state.roleSlots = mappedRoleSlots;
@@ -1369,15 +1919,27 @@ class AppController {
     this.state.messages = {};
 
     taskManager.setProgrammes(mappedProgrammes);
+    this.managerScheduleBackup = null;
+    if (typeof taskManager.clearLocalBeforeServerSyncBackup === "function") {
+      taskManager.clearLocalBeforeServerSyncBackup();
+    }
     try {
       chatManager.setMessages({});
       if (mappedGroups.length > 0) chatManager.setActiveGroup(mappedGroups[0].id);
     } catch {}
+    // Fresh event: authoritative rows were just written transactionally above,
+    // so bind the filtered subscription to this event id.
+    this.activateProgrammeSyncForCurrentEvent();
 
     try {
-      const allEvents = JSON.parse(localStorage.getItem("sangam_all_events") || "[]");
-      allEvents.push(newEvent);
-      localStorage.setItem("sangam_all_events", JSON.stringify(allEvents));
+      saveEventToHistory(newEvent, {
+        event: newEvent,
+        groups: mappedGroups,
+        programmes: mappedProgrammes,
+        joinedPeople: [managerMember],
+        messages: {},
+        roleSlots: mappedRoleSlots,
+      });
     } catch (err) {
       console.warn("Could not save to sangam_all_events:", err);
     }
@@ -1566,12 +2128,12 @@ class AppController {
 
     // 2. Fallback to local storage if not found in Supabase
     if (!foundEvent) {
-      if (this.state.currentEvent && this.state.currentEvent.sixDigitCode === code) {
+      if (this.state.currentEvent && (this.state.currentEvent.sixDigitCode === code || this.state.currentEvent.six_digit_code === code)) {
         foundEvent = this.state.currentEvent;
       } else {
         try {
-          const allEvents = JSON.parse(localStorage.getItem("sangam_all_events") || "[]");
-          foundEvent = allEvents.find((ev) => ev.sixDigitCode === code && ev.status !== "archived");
+          const allEvents = JSON.parse(localStorage.getItem(STORAGE_KEYS.ALL_EVENTS) || "[]");
+          foundEvent = allEvents.find((ev) => (ev.sixDigitCode === code || ev.six_digit_code === code) && ev.status !== "archived");
         } catch {}
       }
     }
@@ -1602,9 +2164,15 @@ class AppController {
       auth.setCustomUser(currentUser);
     }
 
-    let targetGroups = fetchedGroups.length > 0
-      ? fetchedGroups
-      : (this.state.groups.length > 0 ? this.state.groups : [createDefaultGeneralGroup(foundEvent.manager_id || currentUser.id, foundEvent.manager_name || "Event Manager")]);
+    const localSnapshotForJoin = getEventSnapshot(foundEvent.id);
+    let targetGroups = [];
+    if (fetchedGroups.length > 0) {
+      targetGroups = fetchedGroups;
+    } else if (localSnapshotForJoin?.groups?.length) {
+      targetGroups = localSnapshotForJoin.groups;
+    } else {
+      targetGroups = [createDefaultGeneralGroup(foundEvent.manager_id || currentUser.id, foundEvent.manager_name || "Event Manager")];
+    }
     const generalGroup = targetGroups[0];
 
     const newAttendee = {
@@ -1669,11 +2237,41 @@ class AppController {
       }
     }
 
+    const prevEventId = this.state.currentEvent?.id;
+    if (prevEventId && prevEventId !== foundEvent.id) {
+      this.persistCurrentSnapshot();
+    }
+    // Normalize the joined event so history cards always have venue/status/code.
+    foundEvent = {
+      sixDigitCode: foundEvent.six_digit_code || foundEvent.sixDigitCode || code,
+      six_digit_code: foundEvent.six_digit_code || foundEvent.sixDigitCode || code,
+      venue: foundEvent.venue || "TBD",
+      status: foundEvent.status || "active",
+      ...foundEvent,
+    };
+    foundEvent.sixDigitCode = foundEvent.sixDigitCode || foundEvent.six_digit_code || code;
+    foundEvent.six_digit_code = foundEvent.six_digit_code || foundEvent.sixDigitCode || code;
     this.state.currentEvent = foundEvent;
     this.initLiveMembersSync();
     this.state.groups = targetGroups;
+    // Join flow does not fetch role slots yet: restore the snapshot's slots
+    // when staying on the same event, otherwise start empty.
+    if (prevEventId && prevEventId !== foundEvent?.id) {
+      this.state.roleSlots = [];
+      this.state.messages = {};
+    } else if (!Array.isArray(this.state.roleSlots)) {
+      this.state.roleSlots = [];
+    }
+    if (localSnapshotForJoin?.roleSlots?.length && (!this.state.roleSlots || !this.state.roleSlots.length)) {
+      this.state.roleSlots = localSnapshotForJoin.roleSlots;
+    }
 
-    let memberList = fetchedMembers.length > 0 ? fetchedMembers : [...this.state.joinedPeople];
+    let memberList = [];
+    if (fetchedMembers.length > 0) {
+      memberList = [...fetchedMembers];
+    } else if (localSnapshotForJoin?.joinedPeople?.length) {
+      memberList = [...localSnapshotForJoin.joinedPeople];
+    }
     const existingIdx = memberList.findIndex(
       (p) => p.id === newAttendee.id || (p.name && p.name.toLowerCase() === newAttendee.name.toLowerCase())
     );
@@ -1684,9 +2282,28 @@ class AppController {
     }
     this.state.joinedPeople = memberList;
 
-    if (fetchedProgrammes.length > 0) {
-      this.state.programmes = fetchedProgrammes;
-      taskManager.setProgrammes(fetchedProgrammes);
+    // Empty remote collections replace local state so events never leak into each other.
+    // Preserve a manager backup when rejoining the SAME event with divergent
+    // local rows: the server stays authoritative, but the manager can review
+    // and publish once instead of losing local work silently.
+    if (isLive() && auth.getCurrentUser()?.role === "manager" && prevEventId === foundEvent.id) {
+      const localBeforeJoin = taskManager.getProgrammes ? [...taskManager.getProgrammes()] : [];
+      if (localBeforeJoin.length && localBeforeJoin.length !== fetchedProgrammes.length) {
+        this.managerScheduleBackup = {
+          eventId: foundEvent.id,
+          programmes: localBeforeJoin,
+          capturedAt: new Date().toISOString(),
+        };
+      }
+    }
+    const nextProgrammes = fetchedProgrammes.length > 0
+      ? fetchedProgrammes
+      : (isLive() ? [] : (localSnapshotForJoin?.programmes || []));
+    this.state.programmes = nextProgrammes;
+    taskManager.setProgrammes(nextProgrammes);
+    this.activateProgrammeSyncForCurrentEvent();
+    if (localSnapshotForJoin?.messages && Object.keys(localSnapshotForJoin.messages).length && !isLive()) {
+      this.state.messages = localSnapshotForJoin.messages;
     }
 
     chatManager.setActiveGroup(generalGroup.id);
@@ -1694,6 +2311,18 @@ class AppController {
       this.state.messages[generalGroup.id] = [];
     }
     chatManager.setMessages(this.state.messages);
+    try {
+      saveEventToHistory(foundEvent, {
+        event: foundEvent,
+        groups: this.state.groups,
+        programmes: this.state.programmes,
+        joinedPeople: this.state.joinedPeople,
+        messages: this.state.messages,
+        roleSlots: this.state.roleSlots || [],
+      });
+    } catch (e) {
+      console.warn("Could not save joined event to history:", e);
+    }
 
     try {
       sessionStorage.removeItem("sangam_pending_pin");
@@ -1715,7 +2344,8 @@ class AppController {
     this.renderChatChannels();
     this.renderAbout();
     this.updateStats();
-    this.switchView("dashboard");
+    this.renderSessionHistory();
+    this.switchView("dashboard", { preserveWorkspace: true });
     return true;
   }
 
@@ -2826,15 +3456,18 @@ class AppController {
 
   updateEventDisplay() {
     const evt = this.state.currentEvent;
+    const code = evt ? (evt.sixDigitCode || evt.six_digit_code || "—") : "—";
     const titleEl = document.getElementById("side-event-title");
     const codeEl = document.getElementById("side-event-code");
     const navCodeEl = document.getElementById("nav-code-display");
     const popTitleEl = document.getElementById("popover-event-title");
     if (titleEl) titleEl.textContent = evt ? evt.title : "No Active Event";
-    if (codeEl) codeEl.textContent = `PIN: ${evt ? evt.sixDigitCode : "—"}`;
-    if (navCodeEl) navCodeEl.textContent = evt ? evt.sixDigitCode : "—";
+    if (codeEl) codeEl.textContent = `PIN: ${code}`;
+    if (navCodeEl) navCodeEl.textContent = code;
     if (popTitleEl) popTitleEl.textContent = evt ? evt.title : "No Active Event";
     this.renderAbout();
+    const pop = document.getElementById("profile-popover");
+    if (pop && !pop.hidden) this.renderSessionHistory();
   }
 
   updateStats() {

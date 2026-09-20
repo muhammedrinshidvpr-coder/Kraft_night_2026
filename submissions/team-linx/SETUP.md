@@ -156,9 +156,14 @@ Invoke-RestMethod -Method Post -ContentType "application/json" `
  -Body '{"toEmail":"test@example.com","recipientName":"Test","type":"invitation","details":{"eventName":"Kraft Night 2026","role":"volunteer","department":"Stage & Sound","inviteUrl":"http://localhost:8000"}}'
 ```
 
-Apply `supabase/migrations/09_ai_event_blueprints.sql` and
-`10_auth_profile_trigger.sql` after the base `schema.sql`
-before using AI event creation. A Gemini event plan is only available to a
+Apply `supabase/migrations/09_ai_event_blueprints.sql`,
+`10_auth_profile_trigger.sql`, and `11_programme_sync_security.sql` after the
+base `schema.sql` before using AI event creation or the shared schedule.
+Migration `11` replaces the public `programmes` write policy with
+manager-of-that-event RLS, adds the transactional
+`replace_event_programmes` RPC, and requires `programmes` in the
+`supabase_realtime` publication. Deploy the migration before the frontend.
+A Gemini event plan is only available to a
 manager with a real Supabase Auth session. The existing local persona switcher
 is an offline UI demo and cannot authorize a production Gemini request.
 
@@ -171,7 +176,8 @@ the Edge Function creates a separate draft event, groups, and unfilled roles.
 
 ## 6. What YOU still need to do (your action list)
 
-- [ ] Create Supabase project, run `schema.sql`, then run migrations `09` and `10`
+- [ ] Create Supabase project, run `schema.sql`, then run migrations `09`, `10`, and `11_programme_sync_security.sql` (verify `programmes` is in `supabase_realtime`)
+- [ ] Back up the manager's reviewed programme schedule, deploy migration `11` before the frontend, then have the manager open the affected event and publish the reviewed schedule once via the workspace sync notice (members reload/rejoin afterwards)
 - [ ] Configure public Supabase URL + anonymous key through browser-local development settings only
 - [ ] Get Gemini key from AI Studio, set as Edge Function secret, deploy `ai-coordinator`
 - [ ] Set `GEMINI_MODEL`, run migration `09_ai_event_blueprints.sql`, and sign in through Supabase Auth as an event manager

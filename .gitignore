@@ -16,3 +16,6 @@ Thumbs.db
 *.log
 review-*.png
 .playwright-mcp/
+
+# Local-only pitch presentation (do not submit)
+presentation/

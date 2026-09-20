@@ -7,6 +7,7 @@ The deployed project uses the text-ID base schema in `../schema.sql`.
 1. Run `../schema.sql` once for the base application tables.
 2. `09_ai_event_blueprints.sql` — AI plan drafts, unfilled role slots, and atomic apply RPC.
 3. `10_auth_profile_trigger.sql` — creates a profile for every Supabase Auth user.
+4. `11_programme_sync_security.sql` — shared schedule authority: manager-of-that-event programme RLS plus transactional `replace_event_programmes` recovery RPC. Deploy before the frontend.
 
 Verify in **Table Editor**: `profiles, events, event_groups, event_members, programmes, chat_messages, ai_chat_sessions, ai_event_blueprints, event_role_slots`.
 Verify in **Database → Replication → supabase_realtime**: `chat_messages, programmes, event_members` checked.
