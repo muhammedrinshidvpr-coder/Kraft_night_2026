@@ -10,6 +10,7 @@ import { chatManager } from "./chat.js";
 import { aiCoordinator } from "./ai.js";
 import { emailService } from "./email.js";
 import { eventPlanner } from "./event-planner.js";
+import { parseEventCSV, generateEventCSV } from "./csv-handler.js";
 import { getSupabase, isLive } from "./supabase-client.js";
 
 const WORKSPACE_PAGES = ["dashboard", "assign-roles", "create-program", "groups", "about-event"];
@@ -65,6 +66,7 @@ class AppController {
     this.chatManager = chatManager;
     this.taskManager = taskManager;
     this.state = getLocalState();
+    if (!Array.isArray(this.state.roleSlots)) this.state.roleSlots = [];
     this.currentView = normalizeView(this.state.activeView || "landing");
     this.selectedProgramId = null;
     this.aiSeeded = false;
@@ -1039,6 +1041,7 @@ class AppController {
         this.state.groups = [generalGroup];
         this.state.joinedPeople = [managerMember];
         this.state.messages = { [generalGroupId]: [] };
+        this.state.roleSlots = [];
 
         taskManager.setProgrammes([]);
         chatManager.setActiveGroup(generalGroupId);
@@ -1064,6 +1067,8 @@ class AppController {
         this.switchView("dashboard");
       });
     }
+
+    this.bindCsvImport();
 
     const pinInputs = document.querySelectorAll(".pin-digit");
     pinInputs.forEach((input, index) => {
@@ -1112,6 +1117,323 @@ class AppController {
         const code = Array.from(pinInputs).map((i) => i.value).join("");
         await this.joinEventByCode(code, alertEl);
       });
+    }
+  }
+
+  // ---------------------------------------------------------- CSV import/export
+  // Manager-only CSV import on the gateway screen. Creates a brand-new event
+  // instantly (no planner canvas, no confirmation) and makes it active.
+  bindCsvImport() {
+    const importBtn = document.getElementById("btn-import-csv");
+    const fileInput = document.getElementById("csv-import-input");
+    if (!importBtn || !fileInput) return;
+    if (importBtn.dataset.bound) return;
+    importBtn.dataset.bound = "true";
+
+    importBtn.addEventListener("click", () => {
+      if (auth.getCurrentUser()?.role !== "manager") {
+        this.showCsvImportAlert("Only Event Managers can import events.", "error");
+        return;
+      }
+      fileInput.click();
+    });
+
+    fileInput.addEventListener("change", async () => {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) return;
+      // Hard manager guard (DOM hiding alone is bypassable)
+      if (auth.getCurrentUser()?.role !== "manager") {
+        this.showCsvImportAlert("Only Event Managers can import events.", "error");
+        fileInput.value = "";
+        return;
+      }
+      try {
+        const text = await file.text();
+        const blueprint = parseEventCSV(text);
+        await this.createEventFromBlueprint(blueprint);
+        this.showCsvImportAlert(`Imported “${blueprint.title}” — new event created.`, "success");
+      } catch (err) {
+        console.warn("[Sangam] CSV import failed:", err);
+        this.showCsvImportAlert(err?.message || "Could not import this CSV file.", "error");
+      } finally {
+        fileInput.value = "";
+      }
+    });
+  }
+
+  showCsvImportAlert(message, kind = "error") {
+    const alertEl = document.getElementById("csv-import-alert");
+    if (!alertEl) {
+      if (kind === "error") alert(message);
+      return;
+    }
+    alertEl.hidden = false;
+    alertEl.className = `entry-auth-alert ${kind === "success" ? "success" : "error"}`;
+    alertEl.textContent = message;
+  }
+
+  // Instantly create a new event from a CSV/AI blueprint. Always creates a
+  // fresh event ID and replaces the active workspace (never mutates in place).
+  // Live backend writes are all-or-nothing: on any Supabase failure the
+  // partially created remote event is deleted and no local state is changed.
+  async createEventFromBlueprint(blueprint) {
+    if (auth.getCurrentUser()?.role !== "manager") {
+      throw new Error("Only Event Managers can import events.");
+    }
+    const title = String(blueprint?.title || "").trim();
+    if (!title) throw new Error("The [event] section must have a non-empty 'title' value.");
+    const currentUser = auth.getCurrentUser();
+    if (!currentUser) throw new Error("Please sign in as an Event Manager first.");
+
+    const venue = String(blueprint?.venue || "").trim() || "TBD";
+    const sixDigitCode = String(Math.floor(100000 + Math.random() * 900000));
+    const stamp = Date.now();
+    const eventId = `evt-${stamp}`;
+
+    const mappedGroups = (blueprint.groups || [])
+      .filter((g) => g && String(g.name || "").trim())
+      .map((g, idx) => ({
+        id: `grp-${stamp}-${idx}`,
+        eventId,
+        name: String(g.name).trim(),
+        icon: g.icon || "📁",
+        description: g.description || "",
+        leaderId: null,
+        leaderName: null,
+      }));
+
+    // Clamp stale groupIndex values (e.g. hand-edited CSVs) to valid groups
+    const mappedRoleSlots = (blueprint.roleSlots || [])
+      .filter((r) => r && String(r.title || "").trim())
+      .map((r) => {
+        const slot = {
+          title: String(r.title).trim(),
+          responsibility: String(r.responsibility || "").trim(),
+        };
+        if (Number.isInteger(r.groupIndex) && r.groupIndex >= 0 && r.groupIndex < mappedGroups.length) {
+          slot.groupIndex = r.groupIndex;
+        }
+        return slot;
+      });
+
+    const mappedProgrammes = (blueprint.programmes || [])
+      .filter((p) => p && String(p.title || "").trim())
+      .map((p, idx) => ({
+        id: `prog-${stamp}-${idx}`,
+        eventId,
+        title: String(p.title).trim(),
+        description: "",
+        startTime: String(p.startTime || "10:00").trim() || "10:00",
+        endTime: String(p.endTime || "").trim(),
+        venue: String(p.venue || p.venueOrStage || venue).trim() || venue,
+        status: "scheduled",
+        progress: 0,
+        leadGroup: "General Coordination",
+      }));
+
+    // ── Live Supabase sync (transactional) ──────────────────────────────
+    if (isLive()) {
+      let sb = null;
+      try {
+        sb = await getSupabase();
+      } catch (err) {
+        console.warn("[Sangam] Supabase client unavailable:", err);
+      }
+      if (sb) {
+        const rollback = async () => {
+          try {
+            await sb.from("events").delete().eq("id", eventId);
+          } catch {}
+        };
+        try {
+          const { error: evtErr } = await sb.from("events").insert({
+            id: eventId,
+            title,
+            six_digit_code: sixDigitCode,
+            venue,
+            status: "active",
+            manager_id: currentUser.id,
+          });
+          if (evtErr) throw evtErr;
+
+          if (mappedGroups.length > 0) {
+            const { error: grpErr } = await sb.from("event_groups").insert(
+              mappedGroups.map((g) => ({
+                id: g.id,
+                event_id: eventId,
+                name: g.name,
+                icon: g.icon,
+                description: g.description,
+                leader_id: g.leaderId,
+                leader_name: g.leaderName,
+                member_count: 0,
+              }))
+            );
+            if (grpErr) throw grpErr;
+          }
+
+          if (mappedRoleSlots.length > 0) {
+            // Map groupIndex → live group id for FK integrity.
+            // Best-effort: event_role_slots has SELECT-only RLS in some
+            // deployments (see 09_ai_event_blueprints.sql) and may be absent.
+            // Local state remains the source of truth for export/replication.
+            try {
+              const roleRows = mappedRoleSlots.map((r) => ({
+                event_id: eventId,
+                group_id:
+                  r.groupIndex !== undefined && mappedGroups[r.groupIndex]
+                    ? mappedGroups[r.groupIndex].id
+                    : null,
+                title: r.title,
+                responsibility: r.responsibility || "",
+              }));
+              const { error: roleErr } = await sb.from("event_role_slots").insert(roleRows);
+              if (roleErr) console.warn("[Sangam] Role slots live sync skipped:", roleErr.message || roleErr);
+            } catch (roleEx) {
+              console.warn("[Sangam] Role slots live sync skipped:", roleEx?.message || roleEx);
+            }
+          }
+
+          if (mappedProgrammes.length > 0) {
+            const { error: progErr } = await sb.from("programmes").insert(
+              mappedProgrammes.map((p) => ({
+                id: p.id,
+                event_id: eventId,
+                title: p.title,
+                description: p.description || "",
+                start_time: p.startTime,
+                end_time: p.endTime || p.startTime,
+                venue: p.venue,
+                status: "scheduled",
+                lead_group: p.leadGroup,
+                created_by: currentUser.id,
+              }))
+            );
+            if (progErr) throw progErr;
+          }
+
+          const { error: memberErr } = await sb.from("event_members").insert({
+            event_id: eventId,
+            user_id: currentUser.id,
+            name: currentUser.name,
+            email:
+              currentUser.email ||
+              `${String(currentUser.name || "manager").toLowerCase().replace(/[^a-z0-9]+/g, ".")}@sangam.app`,
+            role: "manager",
+            role_badge: "Event Manager",
+            group_name: "Unassigned",
+            status: "active",
+          });
+          if (memberErr) throw memberErr;
+        } catch (err) {
+          console.warn("[Sangam] Live CSV import failed, rolling back:", err);
+          await rollback();
+          throw new Error(`Import failed and was rolled back: ${err?.message || err}`);
+        }
+      }
+    }
+
+    // ── Local state (only reached if live sync succeeded or is offline) ──
+    const newEvent = {
+      id: eventId,
+      title,
+      venue,
+      sixDigitCode,
+      six_digit_code: sixDigitCode,
+      status: "active",
+      created_at: new Date().toISOString(),
+      manager_id: currentUser.id,
+      manager_name: currentUser.name,
+    };
+
+    const managerMember = {
+      id: currentUser.id,
+      name: currentUser.name,
+      email:
+        currentUser.email ||
+        `${String(currentUser.name || "manager").toLowerCase().replace(/[^a-z0-9]+/g, ".")}@sangam.app`,
+      role: "manager",
+      roleBadge: "Event Manager",
+      groupId: null,
+      groupName: "Unassigned",
+      status: "active",
+      joinedAt: "Organizer",
+      avatar: currentUser.avatar,
+    };
+
+    this.state.currentEvent = newEvent;
+    this.state.groups = mappedGroups;
+    this.state.roleSlots = mappedRoleSlots;
+    this.state.joinedPeople = [managerMember];
+    this.state.programmes = mappedProgrammes;
+    this.state.messages = {};
+
+    taskManager.setProgrammes(mappedProgrammes);
+    try {
+      chatManager.setMessages({});
+      if (mappedGroups.length > 0) chatManager.setActiveGroup(mappedGroups[0].id);
+    } catch {}
+
+    try {
+      const allEvents = JSON.parse(localStorage.getItem("sangam_all_events") || "[]");
+      allEvents.push(newEvent);
+      localStorage.setItem("sangam_all_events", JSON.stringify(allEvents));
+    } catch (err) {
+      console.warn("Could not save to sangam_all_events:", err);
+    }
+
+    this.initLiveMembersSync();
+    this.syncRoleButtons();
+    this.persistState();
+    this.updateEventDisplay();
+    this.renderDashboard();
+    this.renderAssignRoles();
+    this.renderProgramsPage();
+    this.renderChatChannels();
+    this.renderAbout();
+    this.updateStats();
+    this.switchView("dashboard");
+    return newEvent;
+  }
+
+  exportEventCSV() {
+    if (!auth.canEditProgramme()) {
+      alert("Only Event Managers can export events.");
+      return;
+    }
+    const evt = this.state.currentEvent;
+    if (!evt) {
+      alert("No active event to export.");
+      return;
+    }
+    try {
+      const csv = generateEventCSV({
+        currentEvent: evt,
+        groups: this.state.groups || [],
+        roleSlots: this.state.roleSlots || [],
+        programmes: taskManager.getProgrammes(),
+      });
+      const safeTitle = String(evt.title || "event")
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "")
+        .slice(0, 60) || "event";
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `sangam-event-${safeTitle}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        try {
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch {}
+      }, 500);
+    } catch (err) {
+      console.warn("[Sangam] CSV export failed:", err);
+      alert(`Export failed: ${err?.message || err}`);
     }
   }
 
@@ -2178,6 +2500,16 @@ class AppController {
 
     const sub = document.getElementById("dashboard-schedule-sub");
     if (sub) sub.textContent = evt?.title ? `${evt.title} · Live programme timeline` : "Live programme timeline";
+
+    // Manager-only CSV export (full live snapshot for replication)
+    const exportCard = document.getElementById("about-export-card");
+    const exportBtn = document.getElementById("btn-export-csv");
+    const canExport = Boolean(evt) && auth.canEditProgramme();
+    if (exportCard) exportCard.hidden = !canExport;
+    if (exportBtn && !exportBtn.dataset.bound) {
+      exportBtn.dataset.bound = "true";
+      exportBtn.addEventListener("click", () => this.exportEventCSV());
+    }
   }
 
   // ------------------------------------------------------------------------ AI
@@ -2271,9 +2603,12 @@ class AppController {
 
   updateAiAccess() {
     const allowed = auth.canRunAIBriefing();
+    const isManager = auth.getCurrentUser()?.role === "manager";
     const rail = document.getElementById("ai-rail");
     const fab = document.getElementById("btn-ai-fab");
     const gatewayPlan = document.getElementById("btn-plan-event");
+    const gatewayImport = document.getElementById("btn-import-csv");
+    const csvAlert = document.getElementById("csv-import-alert");
     ["gemini-prompt-input", "btn-ai-briefing", "btn-ai-force"].forEach((id) => {
       const control = document.getElementById(id);
       if (control) control.disabled = !allowed;
@@ -2281,8 +2616,20 @@ class AppController {
     if (rail) rail.hidden = !allowed;
     if (fab) fab.hidden = !allowed;
     if (gatewayPlan) gatewayPlan.hidden = false;
+    // Strict manager-only import: hidden for volunteers/overseers/leads.
+    // Plan button stays visible (existing behaviour + e2e expectation).
+    if (gatewayImport) gatewayImport.hidden = !isManager;
+    if (csvAlert && !isManager) csvAlert.hidden = true;
     if (!allowed) this.closeDrawers();
     this.setAiStatus(allowed ? "Live event data ready" : "Manager access required", allowed ? "local" : "locked");
+    // Refresh About export visibility when role changes
+    try {
+      if (document.getElementById("page-about-event") && !document.getElementById("page-about-event").hidden) {
+        this.renderAbout();
+      } else if (this.state.currentEvent) {
+        this.renderAbout();
+      }
+    } catch {}
   }
 
   appendAiMessage(from, text, source = "") {

@@ -114,6 +114,13 @@ button, input, select, textarea { font: inherit; }
 .gateway-wrap { position: relative; z-index: 1; padding-top: 120px; }
 .gateway-card-title { font-family: "DM Serif Display", serif; font-weight: 400; margin: 0; font-size: 1.6rem; letter-spacing: -0.01em; color: var(--brand-navy); }
 .gateway-card .btn-dark { border-radius: 999px; width: 100%; }
+.gateway-action-row { display: flex; gap: 10px; flex-wrap: wrap; }
+.gateway-action-row .btn-light { flex: 1 1 140px; border-radius: 999px; }
+.gateway-import-btn, .gateway-ghost-btn { background: transparent; border: 1px solid rgba(32,42,58,0.16); }
+.gateway-import-btn:hover, .gateway-ghost-btn:hover { background: rgba(47,130,217,0.07); }
+.about-export-card .btn-light { min-height: 44px; }
+#csv-import-alert { margin-top: 2px; }
+#csv-import-alert[hidden] { display: none; }
 @media (max-width: 600px) {
   .entry-nav { padding: 14px 16px; }
   .entry-hero { padding: 100px 20px 48px; }

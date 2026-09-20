@@ -50,6 +50,7 @@ export const DEFAULT_GROUPS = [];
 export const DEFAULT_JOINED_PEOPLE = [];
 export const DEFAULT_PROGRAMMES = [];
 export const DEFAULT_MESSAGES = {};
+export const DEFAULT_ROLE_SLOTS = [];
 
 export function createDefaultGeneralGroup(leaderId = "usr-manager", leaderName = "Event Manager") {
   return {
@@ -71,7 +72,8 @@ export const STORAGE_KEYS = {
   GROUPS: "sangam_groups",
   JOINED_PEOPLE: "sangam_joined_people",
   MESSAGES: "sangam_messages",
-  ACTIVE_VIEW: "sangam_active_view"
+  ACTIVE_VIEW: "sangam_active_view",
+  ROLE_SLOTS: "sangam_role_slots",
 };
 
 // Initialize or Load Local Storage State
@@ -116,6 +118,7 @@ export function getLocalState() {
     groups: get(STORAGE_KEYS.GROUPS, []),
     joinedPeople: get(STORAGE_KEYS.JOINED_PEOPLE, []),
     messages: get(STORAGE_KEYS.MESSAGES, {}),
+    roleSlots: get(STORAGE_KEYS.ROLE_SLOTS, []),
     activeView: localStorage.getItem(STORAGE_KEYS.ACTIVE_VIEW) || "landing"
   };
 }
@@ -132,6 +135,7 @@ export function saveLocalState(state) {
     if (state.groups) localStorage.setItem(STORAGE_KEYS.GROUPS, JSON.stringify(state.groups));
     if (state.joinedPeople) localStorage.setItem(STORAGE_KEYS.JOINED_PEOPLE, JSON.stringify(state.joinedPeople));
     if (state.messages) localStorage.setItem(STORAGE_KEYS.MESSAGES, JSON.stringify(state.messages));
+    if (state.roleSlots) localStorage.setItem(STORAGE_KEYS.ROLE_SLOTS, JSON.stringify(state.roleSlots));
     if (state.activeView) localStorage.setItem(STORAGE_KEYS.ACTIVE_VIEW, state.activeView);
   } catch (err) {
     console.warn("Storage write failed", err);
@@ -145,6 +149,7 @@ export function resetDemoState() {
   localStorage.removeItem(STORAGE_KEYS.GROUPS);
   localStorage.removeItem(STORAGE_KEYS.JOINED_PEOPLE);
   localStorage.removeItem(STORAGE_KEYS.MESSAGES);
+  localStorage.removeItem(STORAGE_KEYS.ROLE_SLOTS);
   localStorage.removeItem(STORAGE_KEYS.ACTIVE_VIEW);
   location.reload();
 }

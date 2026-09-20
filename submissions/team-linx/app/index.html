@@ -147,7 +147,12 @@
               <input type="text" id="input-event-title" required placeholder="e.g. Annual Tech Symposium" autocomplete="off">
             </div>
             <button type="submit" class="btn-dark">Create Event &amp; Become Manager</button>
-            <button type="button" class="btn-light" id="btn-plan-event">Plan with Gemini</button>
+            <div class="gateway-action-row">
+              <button type="button" class="btn-light gateway-plan-btn" id="btn-plan-event">✦ Plan with Gemini</button>
+              <button type="button" class="btn-light gateway-import-btn" id="btn-import-csv" title="Import event structure from a CSV file">📂 Import CSV</button>
+              <input type="file" id="csv-import-input" accept=".csv,text/csv" hidden aria-hidden="true">
+            </div>
+            <div id="csv-import-alert" class="entry-auth-alert" hidden></div>
           </form>
         </div>
         <div class="card gateway-card">
@@ -363,6 +368,11 @@
             <section class="card narrow" aria-labelledby="about-org-title">
               <p class="section-label" id="about-org-title">Organizers and leads</p>
               <div class="org-list" id="about-organizers-list"></div>
+            </section>
+            <section class="card narrow about-export-card" id="about-export-card" aria-labelledby="about-export-title" hidden>
+              <p class="section-label" id="about-export-title">Replicate event</p>
+              <p class="card-sub">Download this event as a CSV template (groups, roles, programmes reset to scheduled) for reuse.</p>
+              <button type="button" class="btn-light" id="btn-export-csv">⬇ Export CSV</button>
             </section>
           </div>
         </main>
